@@ -78,7 +78,7 @@ Page({
       difficultyLabel: DIFFICULTY_LABELS[recipe.difficulty] || '简单',
       scenarioLabel: SCENARIO_LABELS[scenario] || '一人食',
       // servingAmount: recipe.servings?.[scenario] || 1,
-      displayIngredients: this._enrichIngredients(recipe.missingIngredients || []),
+      displayIngredients: this._enrichIngredients(recipe.ingredients || [],recipe.missingIngredients|| []),
       missingIngredients: (recipe.ingredients || []).filter((i: any) => i.isEssential && !i.hasItem),
     })
 
@@ -89,11 +89,16 @@ Page({
   /**
    * 为食材列表添加"是否有"标记（与冰箱数据比对）
    */
-  _enrichIngredients(ingredients: any[]): any[] {
+  _enrichIngredients(ingredients: any[], missingIngredients:any[]): any[] {
     // TODO: 与冰箱食材做精确比对，目前先用随机模拟
-    return ingredients.map((ing, idx) => ({
+    const missingIngredientNameMap = new Map(
+      missingIngredients.map(( missFood: any) => [missFood.name, missFood])
+    )
+    return ingredients.map((ing) => ({
       ...ing,
-      hasItem: ing.hasItem !== undefined ? ing.hasItem : Math.random() > 0.3,
+      hasItem: !missingIngredientNameMap.has(ing.name),
+      // 显示用户有多少该食材
+      userFoodQuantity: missingIngredientNameMap.get(ing.name)?.quantity || 0
     }))
   },
 

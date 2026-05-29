@@ -63,6 +63,22 @@ async function getUserFoods() {
     console.warn('获取食材列表失败:', e.message)
     return []
   }
+  // try {
+  //   // 宽松查询：优先 fresh/expiring，如果为空则查全部（兼容各种状态值）
+  //   const res = await db.collection('fridge_items')
+  //     .where({
+  //       _openid: openid,
+  //     })
+  //     .limit(100)
+  //     .get()
+  //   const allItems = res.data || []
+
+  //   // 过滤掉明确已过期的，但保留其他所有可用状态
+  //   return allItems.filter(item => item.status !== 'expired' && item.status !== 'wasted')
+  // } catch (e) {
+  //   console.warn('获取食材列表失败:', e.message)
+  //   return []
+  // }
 }
 
 /**
@@ -281,7 +297,9 @@ async function fetchRecipesFromDatabase(openid, options) {
   try {
     const foods = await getUserFoods()
     let query = db.collection('recipes')
-
+    query = query.where({
+      _openid: openid
+    });
     if (searchKey && searchKey.trim()) {
       query = query.where({
         name: db.RegExp({

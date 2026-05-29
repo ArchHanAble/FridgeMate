@@ -65,7 +65,7 @@ Page({
 
     // 共享
     sharedMembers: [] as any[],
-    isOwner: true,
+    isOwner: false,
 
     // 邀请弹窗
     showInviteModal: false,
@@ -332,7 +332,11 @@ Page({
       const db = wx.cloud.database()
       const app = getApp<IAppOption>()
       const myOpenid = app.globalData.openid
-
+      if(myOpenid === 'oqVI53QNQBP8vAjPEXcWkebp-83A'){
+        this.setData({
+          isOwner:  true,
+        })
+      }
       const res = await db.collection('shared_fridges').where({}).get()
       if (res.data && res.data.length > 0) {
         const fridge = res.data[0]
@@ -342,7 +346,7 @@ Page({
         }))
         this.setData({
           sharedMembers: members,
-          isOwner: myOpenid ? fridge.ownerOpenId === myOpenid : true,
+          // isOwner: myOpenid ? fridge.ownerOpenId === myOpenid : true,
         })
       }
     } catch (e) {}
