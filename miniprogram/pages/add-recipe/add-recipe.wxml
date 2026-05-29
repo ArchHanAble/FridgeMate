@@ -1,0 +1,226 @@
+<!-- pages/add-recipe/add-recipe.wxml -->
+<view class="page-container add-page">
+
+  <view class="form-section animate-fade-in-up">
+
+    <!-- 封面图 -->
+    <view class="form-group">
+      <view class="form-label">
+        <text>封面图</text>
+        <text class="required">*</text>
+      </view>
+      <view class="cover-picker" bindtap="chooseCover" wx:if="{{!imageUrl}}">
+        <text class="cover-picker__icon">📷</text>
+        <text class="cover-picker__text">点击上传菜谱封面</text>
+      </view>
+      <view class="cover-preview" wx:else>
+        <image class="cover-preview__img" src="{{imageUrl}}" mode="aspectFill" />
+        <view class="cover-preview__actions">
+          <text class="cover-action" bindtap="chooseCover">更换</text>
+          <text class="cover-action cover-action--del" bindtap="removeCover">删除</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 菜名 -->
+    <view class="form-group">
+      <view class="form-label">
+        <text>菜名</text>
+        <text class="required">*</text>
+      </view>
+      <input
+        class="form-input"
+        placeholder="例如：西红柿炒鸡蛋"
+        value="{{formData.name}}"
+        bindinput="onInput"
+        data-field="name"
+        maxlength="40"
+      />
+    </view>
+
+    <!-- 简介 -->
+    <view class="form-group">
+      <view class="form-label"><text>简介</text></view>
+      <textarea
+        class="form-textarea"
+        placeholder="简单描述这道菜..."
+        value="{{formData.description}}"
+        bindinput="onInput"
+        data-field="description"
+        maxlength="200"
+        auto-height
+      />
+    </view>
+
+    <!-- 烹饪时长 + 难度 -->
+    <view class="form-row">
+      <view class="form-group form-group--flex">
+        <view class="form-label"><text>烹饪时长(分钟)</text></view>
+        <input
+          class="form-input"
+          type="number"
+          placeholder="15"
+          value="{{formData.cookTime}}"
+          bindinput="onInput"
+          data-field="cookTime"
+        />
+      </view>
+    </view>
+
+    <view class="form-group">
+      <view class="form-label"><text>难度</text></view>
+      <view class="location-picker">
+        <view
+          wx:for="{{difficulties}}"
+          wx:key="value"
+          class="loc-option {{formData.difficulty === item.value ? 'loc-option--active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectDifficulty"
+        >
+          <text>{{item.label}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 标签 -->
+    <view class="form-group">
+      <view class="form-label"><text>标签</text></view>
+      <input
+        class="form-input"
+        placeholder="用逗号分隔，如：快手菜,下饭菜"
+        value="{{formData.tagsText}}"
+        bindinput="onInput"
+        data-field="tagsText"
+        maxlength="80"
+      />
+    </view>
+
+    <!-- 份量 -->
+    <!-- <view class="form-group">
+      <view class="form-label"><text>建议份量（人）</text></view>
+      <view class="servings-row">
+        <view class="serving-item">
+          <text class="serving-label">一人食</text>
+          <input class="form-input form-input--sm" type="number" value="{{formData.servingsSingle}}" bindinput="onInput" data-field="servingsSingle" />
+        </view>
+        <view class="serving-item">
+          <text class="serving-label">两人食</text>
+          <input class="form-input form-input--sm" type="number" value="{{formData.servingsCouple}}" bindinput="onInput" data-field="servingsCouple" />
+        </view>
+        <view class="serving-item">
+          <text class="serving-label">家庭餐</text>
+          <input class="form-input form-input--sm" type="number" value="{{formData.servingsFamily}}" bindinput="onInput" data-field="servingsFamily" />
+        </view>
+      </view>
+    </view> -->
+
+    <!-- 食材列表 -->
+    <view class="form-group">
+      <view class="form-label-row">
+        <view class="form-label">
+          <text>食材</text>
+          <text class="required">*</text>
+        </view>
+        <text class="link-add" bindtap="addIngredient">+ 添加食材</text>
+      </view>
+
+      <view
+        class="dynamic-card"
+        wx:for="{{ingredients}}"
+        wx:for-item="ing"
+        wx:for-index="ingIdx"
+        wx:key="id"
+      >
+        <view class="dynamic-card__head">
+          <text class="dynamic-card__index">食材 {{ingIdx + 1}}</text>
+          <text
+            class="dynamic-card__remove"
+            data-ing-index="{{ingIdx}}"
+            catchtap="removeIngredient"
+            wx:if="{{ingredients.length > 1}}"
+          >删除</text>
+        </view>
+        <input
+          class="form-input"
+          placeholder="食材名称"
+          value="{{ing.name}}"
+          data-ing-index="{{ingIdx}}"
+          data-field="name"
+          bindinput="onIngredientInput"
+        />
+        <scroll-view scroll-x class="category-picker-scroll" enable-flex>
+          <view class="category-picker">
+            <view
+              wx:for="{{ingredientCategories}}"
+              wx:for-item="cat"
+              wx:for-index="catIdx"
+              wx:key="value"
+              class="cat-option {{ing.category === cat.value ? 'cat-option--active' : ''}}"
+              data-ing-index="{{ingIdx}}"
+              data-value="{{cat.value}}"
+              catchtap="selectIngredientCategory"
+            >
+              <text>{{cat.icon}} {{cat.label}}</text>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="form-row form-row--tight">
+          <input
+            class="form-input form-group--flex"
+            placeholder="用量"
+            value="{{ing.amount}}"
+            data-ing-index="{{ingIdx}}"
+            data-field="amount"
+            bindinput="onIngredientInput"
+          />
+          <input
+            class="form-input form-group--flex"
+            placeholder="单位"
+            value="{{ing.unit}}"
+            data-ing-index="{{ingIdx}}"
+            data-field="unit"
+            bindinput="onIngredientInput"
+          />
+        </view>
+        <view class="essential-row" data-ing-index="{{ingIdx}}" catchtap="toggleIngredientEssential">
+          <text class="essential-check {{ing.isEssential ? 'essential-check--on' : ''}}">{{ing.isEssential ? '✓' : ''}}</text>
+          <text>必需食材</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 步骤列表 -->
+    <view class="form-group">
+      <view class="form-label-row">
+        <view class="form-label">
+          <text>做法步骤</text>
+          <text class="required">*</text>
+        </view>
+        <text class="link-add" bindtap="addStep">+ 添加步骤</text>
+      </view>
+
+      <view class="dynamic-card" wx:for="{{steps}}" wx:key="index">
+        <view class="dynamic-card__head">
+          <text class="dynamic-card__index">步骤 {{index + 1}}</text>
+          <text class="dynamic-card__remove" data-index="{{index}}" bindtap="removeStep" wx:if="{{steps.length > 1}}">删除</text>
+        </view>
+        <textarea
+          class="form-textarea"
+          placeholder="描述这一步怎么做..."
+          value="{{item.text}}"
+          data-index="{{index}}"
+          bindinput="onStepInput"
+          auto-height
+          maxlength="500"
+        />
+      </view>
+    </view>
+
+  </view>
+
+  <view class="bottom-bar">
+    <button class="btn-primary btn-submit {{submitting ? 'btn-submit--disabled' : ''}}" bindtap="submitForm">
+      <text>{{submitting ? '提交中...' : '✨ 保存菜谱'}}</text>
+    </button>
+  </view>
+</view>

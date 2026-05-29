@@ -1,0 +1,1 @@
+{"name": "getUserFoods", "version": "1.0.0", "description": "获取用户冰箱食材 - 核心云函数", "main": "index.js", "dependencies": {"wx-server-sdk": "~2.6.3"}}

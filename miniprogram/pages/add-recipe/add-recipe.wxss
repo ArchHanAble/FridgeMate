@@ -1,0 +1,153 @@
+/* pages/add-recipe/add-recipe.wxss — 与 add-food 表单风格一致 */
+
+@import '../add-food/add-food.wxss';
+
+.add-page {
+  padding-bottom: 160rpx;
+}
+
+/* 封面图 */
+.cover-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  height: 280rpx;
+  background: #FFFFFF;
+  border: 2rpx dashed var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.cover-picker__icon { font-size: 64rpx; }
+.cover-picker__text { font-size: var(--font-size-sm); color: var(--color-text-hint); }
+
+.cover-preview {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.cover-preview__img {
+  width: 100%;
+  height: 280rpx;
+  display: block;
+}
+
+.cover-preview__actions {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  display: flex;
+  gap: 12rpx;
+}
+
+.cover-action {
+  padding: 8rpx 20rpx;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-full);
+}
+
+.cover-action--del { background: rgba(255, 107, 107, 0.85); }
+
+/* 份量 */
+.servings-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.serving-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.serving-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.form-input--sm {
+  height: 72rpx;
+  padding: 0 16rpx;
+  text-align: center;
+}
+
+/* 动态列表卡片 */
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.form-label-row .form-label { margin-bottom: 0; }
+
+.link-add {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.dynamic-card {
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+  background: #FFFFFF;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 2rpx solid var(--color-border);
+}
+
+.dynamic-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.dynamic-card__index {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.dynamic-card__remove {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+.form-row--tight {
+  margin-top: 12rpx;
+  gap: 12rpx;
+}
+
+.essential-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 12rpx;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.essential-check {
+  width: 36rpx;
+  height: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid var(--color-border);
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: transparent;
+}
+
+.essential-check--on {
+  background: var(--color-primary-gradient);
+  border-color: var(--color-primary);
+  color: #fff;
+}
