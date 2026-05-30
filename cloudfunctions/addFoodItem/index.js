@@ -28,6 +28,44 @@ exports.main = async (event, context) => {
       return { success: false, errMsg: '请选择分类' }
     }
 
+    // === 去重检查：同一冰箱组不能有重复名称的食材 ===
+    const trimmedName = name.trim()
+
+    // 查找用户所在的共享组
+    let checkOpenids = [openid]
+    try {
+      const fridgeRes = await db.collection('shared_fridges')
+        .where({
+          $or: [
+            { ownerOpenId: openid },
+            { 'members.openId': openid }
+          ]
+        })
+        .limit(1)
+        .get()
+
+      if (fridgeRes.data && fridgeRes.data.length > 0) {
+        const fridge = fridgeRes.data[0]
+        checkOpenids = (fridge.members || []).map(m => m.openId)
+      }
+    } catch (e) {
+      // 集合不存在等情况，仅检查用户自己的食材
+      console.warn('共享组查询失败，仅检查个人食材:', e.message)
+    }
+
+    // 查询同组内是否存在同名且未消耗的食材
+    const dupRes = await db.collection('fridge_items')
+      .where({
+        _openid: _.in(checkOpenids),
+        name: trimmedName,
+        status: db.RegExp({ regexp: '^(?!consumed$)', options: 'i' })
+      })
+      .count()
+
+    if (dupRes.total > 0) {
+      return { success: false, errMsg: `冰箱中已存在「${trimmedName}」，请勿重复添加` }
+    }
+
     // 如果有barcode，尝试从品牌库获取保质期信息
     let finalShelfLifeDays = shelfLifeDays
     let finalExpiryDate = expiryDate
@@ -73,7 +111,7 @@ exports.main = async (event, context) => {
     // 构建写入数据
     const dataToSave = {
       _openid: openid,
-      name: name.trim(),
+      name: trimmedName,
       brand: (brand || '').trim(),
       category,
       location: location || 'fridge',

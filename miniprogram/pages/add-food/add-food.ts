@@ -620,14 +620,10 @@ Page({
       }
     } catch (e: any) {
       console.error('提交失败:', e)
-      try {
-        const db = wx.cloud.database()
-        await db.collection('fridge_items').add({ data: { ...dataToSave, _openid: '{auto}' } })
-        wx.showToast({ title: '✨ 添加成功！', icon: 'success' })
-        setTimeout(() => wx.navigateBack(), 1200)
-      } catch (e2) {
-        wx.showToast({ title: '添加失败，请重试', icon: 'none' })
-      }
+      wx.showToast({ 
+        title: e.message || '添加失败，请重试', 
+        icon: 'none' 
+      })
     } finally {
       this.setData({ submitting: false })
     }

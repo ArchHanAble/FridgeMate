@@ -66,6 +66,7 @@ Page({
     // 共享
     sharedMembers: [] as any[],
     isOwner: false,
+    currentFridgeId: '',  // 当前共享冰箱的ID
 
     // 邀请弹窗
     showInviteModal: false,
@@ -331,25 +332,77 @@ Page({
     try {
       const db = wx.cloud.database()
       const app = getApp<IAppOption>()
-      const myOpenid = app.globalData.openid
-      if(myOpenid === 'oqVI53QNQBP8vAjPEXcWkebp-83A'){
-        this.setData({
-          isOwner:  true,
-        })
+
+      // 等待 openid 加载完成
+      let retries = 0
+      while (!app.globalData.openid && retries < 10) {
+        console.log('⏳ 等待 openid 加载...')
+        await new Promise(resolve => setTimeout(resolve, 500))
+        retries++
       }
-      const res = await db.collection('shared_fridges').where({}).get()
-      if (res.data && res.data.length > 0) {
-        const fridge = res.data[0]
+      const myOpenid = app.globalData.openid
+      if (!myOpenid) {
+        console.error('❌ openid 未加载，无法查询共享冰箱')
+        return
+      }
+      
+      console.log('🔍 开始查询共享冰箱, myOpenid:', myOpenid)
+      // if(myOpenid === 'oqVI53QNQBP8vAjPEXcWkebp-83A'){
+      //   this.setData({
+      //     isOwner:  true,
+      //   })
+      // }
+      // 查询当前用户相关的共享组：是 owner 或 member
+      // 方案：先查 ownerOpenId，再查 members（分两次查询避免语法问题）
+      let fridge = null
+      
+      // 1. 先查是否是 owner
+      const ownerRes = await db.collection('shared_fridges')
+        .where({ ownerOpenId: myOpenid })
+        .limit(1)
+        .get()
+      
+      console.log('🔍 owner 查询结果:', ownerRes.data)
+      
+      if (ownerRes.data && ownerRes.data.length > 0) {
+        fridge = ownerRes.data[0]
+      } else {
+        // 2. 再查是否是 member（获取所有，前端过滤）
+        const allRes = await db.collection('shared_fridges').where({}).get()
+        console.log('🔍 所有共享冰箱:', allRes.data)
+        
+        const found = allRes.data.find((f: any) => 
+          f.members && f.members.some((m: any) => m.openId === myOpenid)
+        )
+        
+        if (found) {
+          fridge = found
+        }
+      }
+      
+      if (fridge) {
+        console.log('✅ 找到共享冰箱:', fridge)
         const members = (fridge.members || []).map((m: any, i: number) => ({
           ...m,
           displayName: m.name || '成员' + (i + 1),
         }))
         this.setData({
           sharedMembers: members,
-          // isOwner: myOpenid ? fridge.ownerOpenId === myOpenid : true,
+          isOwner: fridge.ownerOpenId === myOpenid,
+          currentFridgeId: fridge._id,
+        })
+      } else {
+        console.log('ℹ️ 未找到共享冰箱，显示空状态')
+        this.setData({
+          sharedMembers: [],
+          isOwner: false,
+          currentFridgeId: '',
         })
       }
-    } catch (e) {}
+      
+    } catch (e) {
+      console.error('❌ _loadSharedMembers 出错:', e)
+    }
   },
 
   /* === 场景切换 === */
@@ -639,6 +692,103 @@ Page({
           wx.showToast({ title: '操作失败，请重试', icon: 'none' })
         } finally {
           wx.hideLoading()
+        }
+      },
+    })
+  },
+
+  /** 退出冰箱 — 成员操作 */
+  async leaveFridge() {
+    const app = getApp<IAppOption>()
+    const myOpenid = app.globalData.openid
+    if (!myOpenid) return
+
+    wx.showModal({
+      title: '退出冰箱',
+      content: '确定要退出这个共享冰箱吗？\n\n退出后你将无法查看和编辑该冰箱的数据。',
+      confirmColor: '#FF6B6B',
+      confirmText: '确认退出',
+      success: async (res) => {
+        if (!res.confirm) return
+
+        wx.showLoading({ title: '退出中...' })
+        try {
+          // 通过云函数退出冰箱（绕过客户端权限限制）
+          const leaveRes = await wx.cloud.callFunction({
+            name: 'leaveShareFridge',
+            data: {}
+          })
+
+          const result = leaveRes.result as any
+          if (!result.success) {
+            throw new Error(result.errMsg)
+          }
+
+          wx.hideLoading()
+          wx.showToast({ title: '已退出冰箱', icon: 'success' })
+
+          // 重新加载状态
+          this._loadSharedMembers()
+        } catch (e: any) {
+          wx.hideLoading()
+          console.error('❌ 退出冰箱失败:', e)
+          wx.showToast({ title: e.message || '操作失败，请重试', icon: 'none' })
+        }
+      },
+    })
+  },
+
+  /** 解散冰箱 — 管理员操作 */
+  async dissolveFridge() {
+    const app = getApp<IAppOption>()
+    const myOpenid = app.globalData.openid
+    if (!myOpenid) return
+
+    wx.showModal({
+      title: '解散冰箱',
+      content: '确定要解散这个共享冰箱吗？\n\n解散后所有成员都将无法访问该冰箱的数据，此操作不可恢复！',
+      confirmColor: '#FF4D4F',
+      confirmText: '确认解散',
+      success: async (res) => {
+        if (!res.confirm) return
+
+        wx.showLoading({ title: '解散中...' })
+        try {
+          const db = wx.cloud.database()
+
+          // 查找当前用户作为 owner 的共享组
+          const fridgeRes = await db.collection('shared_fridges')
+            .where({ ownerOpenId: myOpenid })
+            .limit(1)
+            .get()
+          console.log(fridgeRes);
+          if (fridgeRes.data && fridgeRes.data.length > 0) {
+            const fridge = fridgeRes.data[0]
+
+            // 通过云函数删除共享组（绕过客户端权限限制）
+            const dissolveRes = await wx.cloud.callFunction({
+              name: 'dissolveShareFridge',
+              data: { groupId: fridge._id }
+            })
+
+            const result = dissolveRes.result as any
+            if (!result.success) {
+              throw new Error(result.errMsg)
+            }
+
+            wx.hideLoading()
+            wx.showToast({ title: '已解散冰箱', icon: 'success' })
+
+            // 重新加载状态
+            this._loadSharedMembers()
+          } else {
+            wx.hideLoading()
+            wx.showToast({ title: '未找到共享组', icon: 'none' })
+          }
+        } catch (e: any) {
+          wx.hideLoading()
+          console.error('❌ 解散冰箱失败:', e)
+          wx.showToast({ title: '操作失败，请重试', icon: 'none' })
         }
       },
     })

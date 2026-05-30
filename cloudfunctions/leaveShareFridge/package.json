@@ -1,0 +1,1 @@
+{"name": "leaveShareFridge", "version": "1.0.0", "description": "退出共享冰箱 — 成员主动退出", "main": "index.js", "dependencies": {"wx-server-sdk": "~2.6.3"}}

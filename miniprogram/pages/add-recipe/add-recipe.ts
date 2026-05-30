@@ -39,6 +39,30 @@ Page({
     ],
     ingredientCategories: INGREDIENT_CATEGORIES,
     submitting: false,
+    // 食材名称自动补全
+    foodNameList: [] as string[],
+    activeIngIndex: -1,
+    showSuggestions: false,
+    filteredSuggestions: [] as string[],
+  },
+
+  onLoad() {
+    this._loadFoodNames()
+  },
+
+  /** 加载冰箱食材名称列表（用于自动补全） */
+  async _loadFoodNames() {
+    try {
+      const res = await wx.cloud.callFunction({ name: 'getUserFoods' })
+      const result = res.result as { success: boolean; data: any[] }
+      if (result?.success && result.data) {
+        // 去重 + 保持顺序
+        const names = [...new Set(result.data.map((f: any) => f.name).filter(Boolean))]
+        this.setData({ foodNameList: names })
+      }
+    } catch (e) {
+      console.warn('加载食材名称失败:', e)
+    }
   },
 
   onInput(e: WechatMiniprogram.Input) {
@@ -100,6 +124,47 @@ Page({
     const field = e.currentTarget.dataset.field as string
     const key = `ingredients[${index}].${field}`
     this.setData({ [key]: e.detail.value })
+
+    // 食材名称输入时触发自动补全
+    if (field === 'name') {
+      this._updateSuggestions(index, e.detail.value)
+    }
+  },
+
+  /** 根据输入值更新建议列表 */
+  _updateSuggestions(ingIndex: number, value: string) {
+    if (!value || !value.trim()) {
+      this.setData({ showSuggestions: false, activeIngIndex: -1, filteredSuggestions: [] })
+      return
+    }
+    const keyword = value.trim().toLowerCase()
+    const matched = this.data.foodNameList
+      .filter(name => name.toLowerCase() === keyword || name.toLowerCase().includes(keyword))
+      .slice(0, 8)
+
+    this.setData({
+      activeIngIndex: ingIndex,
+      showSuggestions: matched.length > 0,
+      filteredSuggestions: matched,
+    })
+  },
+
+  /** 选择一个建议的食材名称 */
+  selectSuggestion(e: WechatMiniprogram.TouchEvent) {
+    const name = e.currentTarget.dataset.name as string
+    const idx = this.data.activeIngIndex
+    if (!name || idx < 0) return
+    this.setData({
+      [`ingredients[${idx}].name`]: name,
+      showSuggestions: false,
+      activeIngIndex: -1,
+      filteredSuggestions: [],
+    })
+  },
+
+  /** 关闭建议列表 */
+  closeSuggestions() {
+    this.setData({ showSuggestions: false, activeIngIndex: -1, filteredSuggestions: [] })
   },
 
   selectIngredientCategory(e: WechatMiniprogram.TouchEvent) {

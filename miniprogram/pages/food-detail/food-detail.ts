@@ -142,15 +142,18 @@ Page({
         // 映射表里也找不到，走数据库查询兜底
       }
 
-      const db = wx.cloud.database()
-      const res = await db.collection('fridge_items').doc(this.data._id).get()
+      const res = await wx.cloud.callFunction({
+        name: 'manageFoodItem',
+        data: { action: 'getDetail', itemId: this.data._id }
+      })
+      const result = res.result as { success: boolean; data?: any; errMsg: string }
       
-      if (!res.data) {
-        wx.showToast({ title: '食材不存在', icon: 'none' })
+      if (!result.success || !result.data) {
+        wx.showToast({ title: result.errMsg || '食材不存在', icon: 'none' })
         return
       }
 
-      this._renderItem(res.data as any)
+      this._renderItem(result.data as any)
     } catch (e) {
       console.error('加载详情失败:', e)
       wx.showToast({ title: '加载失败', icon: 'none' })
@@ -261,15 +264,19 @@ Page({
 
   async _markAsConsumed() {
     try {
-      const db = wx.cloud.database()
-      await db.collection('fridge_items').doc(this.data._id).update({
-        data: { status: 'consumed', updatedAt: db.serverDate() },
+      const res = await wx.cloud.callFunction({
+        name: 'manageFoodItem',
+        data: { action: 'consume', itemId: this.data._id }
       })
-      wx.showToast({ title: '已标记处理 ✓', icon: 'success' })
+      const result = res.result as { success: boolean; errMsg: string }
+      if (!result.success) {
+        throw new Error(result.errMsg)
+      }
+      wx.showToast({ title: '已标记处理', icon: 'success' })
       setTimeout(() => wx.navigateBack(), 1200)
-    } catch (e) {
+    } catch (e: any) {
       console.error('标记失败:', e)
-      wx.showToast({ title: '操作失败', icon: 'none' })
+      wx.showToast({ title: e.message || '操作失败', icon: 'none' })
     }
   },
 
@@ -304,13 +311,19 @@ Page({
 
   async _deleteItem() {
     try {
-      const db = wx.cloud.database()
-      await db.collection('fridge_items').doc(this.data._id).remove()
+      const res = await wx.cloud.callFunction({
+        name: 'manageFoodItem',
+        data: { action: 'delete', itemId: this.data._id }
+      })
+      const result = res.result as { success: boolean; errMsg: string }
+      if (!result.success) {
+        throw new Error(result.errMsg)
+      }
       wx.showToast({ title: '已删除', icon: 'success' })
       setTimeout(() => wx.navigateBack(), 1200)
-    } catch (e) {
+    } catch (e: any) {
       console.error('删除失败:', e)
-      wx.showToast({ title: '删除失败', icon: 'none' })
+      wx.showToast({ title: e.message || '删除失败', icon: 'none' })
     }
   },
 })

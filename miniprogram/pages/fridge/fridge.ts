@@ -91,15 +91,20 @@ Page({
     this.setData({ loading: true })
 
     try {
-      const db = wx.cloud.database()
-      const _ = db.command
-      const res = await db.collection('fridge_items')
-        .where({ status: _.in(['fresh', 'expiring', 'expired']) })
-        .orderBy('updatedAt', 'desc')
-        .limit(100)
-        .get()
+      const res = await wx.cloud.callFunction({ name: 'getUserFoods' })
+      const result = res.result as { success: boolean; data: any[]; message: string }
+      let rawItems: any[] = []
+      if (result.success) {
+        rawItems = result.data || []
+        // 按更新日期降序排列
+        rawItems.sort((a, b) => {
+          const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+          const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+          return tb - ta
+        })
+      }
 
-      let items: FoodItemData[] = (res.data || []).map((item: any) => ({
+      let items: FoodItemData[] = (rawItems || []).map((item: any) => ({
         ...item,
         status: item.status || (item.expiryDate ? getExpiryStatus(item.expiryDate) : 'fresh'),
         expiryText: item.expiryDate ? getExpiryText(item.expiryDate) : '',

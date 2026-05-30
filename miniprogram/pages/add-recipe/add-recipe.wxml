@@ -140,14 +140,35 @@
             wx:if="{{ingredients.length > 1}}"
           >删除</text>
         </view>
-        <input
-          class="form-input"
-          placeholder="食材名称"
-          value="{{ing.name}}"
-          data-ing-index="{{ingIdx}}"
-          data-field="name"
-          bindinput="onIngredientInput"
-        />
+        <view class="ing-name-wrap">
+          <input
+            class="form-input"
+            placeholder="食材名称（优先选择冰箱中已有的）"
+            value="{{ing.name}}"
+            data-ing-index="{{ingIdx}}"
+            data-field="name"
+            bindinput="onIngredientInput"
+            bindblur="closeSuggestions"
+          />
+          <!-- 食材名称自动补全 -->
+          <view
+            class="suggestion-list {{showSuggestions && activeIngIndex === ingIdx ? 'suggestion-list--show' : ''}}"
+            wx:if="{{showSuggestions && activeIngIndex === ingIdx && filteredSuggestions.length > 0}}"
+            catchtap="selectSuggestion"
+          >
+            <view
+              wx:for="{{filteredSuggestions}}"
+              wx:key="*this"
+              class="suggestion-item"
+              data-name="{{item}}"
+              catchtap="selectSuggestion"
+            >
+              <text class="suggestion-icon">🧊</text>
+              <text>{{item}}</text>
+              <text class="suggestion-hint">冰箱中有</text>
+            </view>
+          </view>
+        </view>
         <scroll-view scroll-x class="category-picker-scroll" enable-flex>
           <view class="category-picker">
             <view

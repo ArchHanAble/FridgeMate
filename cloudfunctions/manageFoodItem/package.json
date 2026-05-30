@@ -1,0 +1,1 @@
+{"name": "manageFoodItem", "version": "1.0.0", "description": "管理食材 — 标记消耗/删除，支持跨共享组成员操作", "main": "index.js", "dependencies": {"wx-server-sdk": "~2.6.3"}}

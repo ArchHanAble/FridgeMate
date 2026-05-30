@@ -246,49 +246,59 @@
       <text class="section-title">👨‍👩‍👧‍👦 冰箱共享</text>
       <text class="section-desc">与家人/室友共享同一个冰箱数据</text>
     </view>
-
-    <!-- ★ 已有成员时：显示成员头像列表 -->
-    <view class="share-members-row" wx:if="{{sharedMembers.length > 0}}" bindtap="inviteShare">
-      <scroll-view scroll-x class="member-avatars-scroll" enhanced show-scrollbar="{{false}}">
-        <view class="member-avatars">
-          <view class="member-avatar-item" wx:for="{{sharedMembers}}" wx:key="openId">
-            <image 
-              class="member-avatar-img" 
-              src="{{item.avatar || '/images/default-avatar.png'}}" 
-              mode="aspectFill"
-            />
-            <view wx:if="{{item.isOwner}}" class="member-badge member-badge--owner">主</view>
+  
+    <!-- ★ 状态A：已加入共享组（显示成员列表） -->
+    <view wx:if="{{sharedMembers.length > 0}}">
+      <!-- 成员头像列表 -->
+      <view class="share-members-row" bindtap="inviteShare">
+        <scroll-view scroll-x class="member-avatars-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="member-avatars">
+            <view class="member-avatar-item" wx:for="{{sharedMembers}}" wx:key="openId">
+              <image class="member-avatar-img" src="{{item.avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
+              <view wx:if="{{item.isOwner}}" class="member-badge member-badge--owner">主</view>
+            </view>
           </view>
+        </scroll-view>
+        <view class="share-status-text">
+          <text class="member-count">{{sharedMembers.length}}人共享中</text>
+          <text class="share-arrow">›</text>
         </view>
-      </scroll-view>
-      <view class="share-status-text">
-        <text class="member-count">{{sharedMembers.length}}人共享中</text>
-        <text class="share-arrow">›</text>
+      </view>
+  
+      <!-- 操作按钮区 -->
+      <view class="share-actions">
+        <!-- 管理员：继续邀请 + 解散冰箱 -->
+        <button class="btn-share-action btn-share--invite" bindtap="inviteShare" wx:if="{{isOwner}}">
+          <text>➕ 继续邀请</text>
+        </button>
+  
+        <button class="btn-share-action btn-share--dissolve" bindtap="dissolveFridge" wx:if="{{isOwner}}">
+          <text>🗑️ 解散冰箱</text>
+        </button>
+  
+        <!-- 成员：退出冰箱 -->
+        <button class="btn-share-action btn-share--leave" bindtap="leaveFridge" wx:if="{{!isOwner}}">
+          <text>🚪 退出冰箱</text>
+        </button>
       </view>
     </view>
-
-    <!-- ★ 操作按钮区 -->
-    <view class="share-actions">
-      <!-- 管理员：邀请按钮（未共享或已有成员都显示） -->
-      <button 
-        class="btn-share-action btn-share--invite" 
-        bindtap="inviteShare" 
-        wx:if="{{isOwner}}"
-      >
-        <text wx:if="{{sharedMembers.length > 0}}">➕ 继续邀请</text>
-        <text wx:else>📤 邀请家人/室友</text>
-      </button>
-      
-      <!-- 非管理员：加入按钮 -->
-      <button 
-        class="btn-share-action btn-share--join" 
-        bindtap="showJoinInput"
-        wx:else
-      >
-        <text>📥 加入别人的冰箱</text>
-      </button>
+  
+    <!-- ★ 状态B：未加入共享组（显示两个按钮） -->
+    <view wx:else>
+      <view class="share-actions">
+        <!-- 分享自己的冰箱 -->
+        <button class="btn-share-action btn-share--invite" bindtap="inviteShare">
+          <text>📤 分享我的冰箱</text>
+        </button>
+  
+        <!-- 加入别人的冰箱 -->
+        <button class="btn-share-action btn-share--join" bindtap="showJoinInput">
+          <text>📥 加入别人的冰箱</text>
+        </button>
+      </view>
     </view>
   </view>
+
 
   <!-- === 统计概览（成就感数据）=== -->
   <view class="card setting-section">

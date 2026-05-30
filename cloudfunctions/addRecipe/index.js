@@ -62,9 +62,29 @@ exports.main = async (event, context) => {
       return { success: false, errMsg: '请至少添加一个有效步骤' }
     }
 
+    // === 查找用户所在的共享冰箱组 ===
+    let groupId = null
+    try {
+      const fridgeRes = await db.collection('shared_fridges')
+        .where({
+          $or: [
+            { ownerOpenId: openid },
+            { 'members.openId': openid }
+          ]
+        })
+        .limit(1)
+        .get()
+      if (fridgeRes.data && fridgeRes.data.length > 0) {
+        groupId = fridgeRes.data[0]._id
+      }
+    } catch (e) {
+      console.warn('共享组查询失败，继续以个人方式添加:', e.message)
+    }
+
     const now = new Date()
     const dataToSave = {
       _openid: openid,
+      groupId: groupId, // 共享组 ID（非共享用户为 null）
       name: String(name).trim(),
       description: String(description || '').trim(),
       cookTime: Number(cookTime) || 0,

@@ -151,3 +151,53 @@
   border-color: var(--color-primary);
   color: #fff;
 }
+
+/* 食材名称自动补全 */
+.ing-name-wrap {
+  position: relative;
+}
+
+.suggestion-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+  max-height: 400rpx;
+  overflow-y: auto;
+  margin-top: 4rpx;
+}
+
+.suggestion-list--show {
+  display: block;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 28rpx;
+  color: var(--color-text-primary);
+  border-bottom: 1rpx solid var(--color-border-light, #f0f0f0);
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:active {
+  background: var(--color-bg-secondary, #f7f7f7);
+}
+
+.suggestion-icon { font-size: 28rpx; }
+
+.suggestion-hint {
+  margin-left: auto;
+  font-size: 22rpx;
+  color: var(--color-primary);
+}

@@ -1,0 +1,1 @@
+{"name": "dissolveShareFridge", "version": "1.0.0", "description": "解散共享冰箱 — 仅允许 owner 操作", "main": "index.js", "dependencies": {"wx-server-sdk": "~2.6.3"}}

@@ -79,12 +79,13 @@ exports.main = async (event, context) => {
       
       let newStatus
       
+
+      if (!notifyMap[item._openid]) notifyMap[item._openid] = { expiring: [], expired: [] }
       if (diffDays < 0) {
         newStatus = 'expired'
         updatedExpired++
         
         // 记录过期通知
-        if (!notifyMap[item._openid]) notifyMap[item._openid] = { expiring: [], expired: [] }
         notifyMap[item._openid].expired.push(item.name)
         
       } else if (diffDays <= warnDays) {
@@ -92,7 +93,6 @@ exports.main = async (event, context) => {
         updatedExpiring++
         
         // 记录临期通知
-        if (!notifyMap[item._openid]) notifyMap[item._openid] = { expiring: [], expired: [] }
         // 只在状态从 fresh 变为 expiring 时通知（避免每天重复）
         if (item.status !== 'expiring') {
           notifyMap[item._openid].expiring.push({

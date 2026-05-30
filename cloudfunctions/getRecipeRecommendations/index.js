@@ -48,17 +48,16 @@ exports.main = async (event, context) => {
 
 // ==================== 核心算法 ====================
 
-async function getUserFoods() {
+async function getUserFoods(openid) {
   try {
     const userFoodRes = await cloud.callFunction({
-      name: 'getUserFood',
-      data: {} // 无需传参，云函数内通过openid获取用户数据
+      name: 'getUserFoods',
+      data: { openid } // ★ 显式传递 openid，因为云函数间调用不自动继承 WXContext
     })
     const userFoods = userFoodRes.result.success ? userFoodRes.result.data : []
     const allItems =userFoods || []
 
-    // 过滤掉已过期/已消耗的，保留其他所有可用状态
-    return allItems.filter(item => item.status !== 'expired' && item.status !== 'consumed' )
+    return allItems
   } catch (e) {
     console.warn('获取食材列表失败:', e.message)
     return []
@@ -165,6 +164,12 @@ async function getUserFoods() {
 
 function matchRecipeWithFoods(foods, recipe, scenario) {
   const ingredients = recipe.ingredients || []
+  // ====== 调试信息 START ======
+  console.log('=== 匹配调试 ===')
+  console.log('[菜谱]', JSON.stringify({ name: recipe.name, _id: recipe._id }))
+  console.log('[冰箱foods原始]', JSON.stringify(foods.map(f => ({ name: f.name, _id: f._id }))))
+  console.log('[菜谱ingredients原始]', JSON.stringify(ingredients))
+  // ====== 调试信息 END ======
 
   if (!ingredients.length) {
     return {
@@ -188,8 +193,13 @@ function matchRecipeWithFoods(foods, recipe, scenario) {
   }
 
   // const foodList = foods.map(f => ({ ...f, _norm: normalizeName(f.name) }))
-  // 严格匹配：小写 + 去空格
-  const fridgeNames = foods.map(f => f.name.trim().toLowerCase())
+  // 严格匹配：小写 + 去所有空白字符
+  const fridgeNames = foods
+    .filter(f => f && typeof f.name === 'string' && f.name.trim())
+    .map(f => f.name.replace(/\s+/g, '').toLowerCase())
+
+  console.log('[冰箱清洗后名称]', JSON.stringify(fridgeNames))
+
   const CONDIMENT_CATS = new Set(['condiment', 'beverage'])
 
   let totalRequired = 0
@@ -199,15 +209,23 @@ function matchRecipeWithFoods(foods, recipe, scenario) {
   let expiringBonus = 0
 
   for (const ing of ingredients) {
+    if (!ing || typeof ing.name !== 'string' || !ing.name.trim()) continue
     if (CONDIMENT_CATS.has(ing.category)) continue
     totalRequired++
 
-    const ingNameClean = ing.name.trim().toLowerCase()
+    const ingNameClean = ing.name.replace(/\s+/g, '').toLowerCase()
     const isMatchedByName = fridgeNames.includes(ingNameClean)
+
+    console.log('[配料比对]', {
+      原始: ing.name,
+      清洗后: ingNameClean,
+      在冰箱中: isMatchedByName,
+      冰箱列表: fridgeNames
+    })
 
     if (isMatchedByName) {
 
-      const hitFood = foods.find(f => f.name.trim().toLowerCase() === ingNameClean)
+      const hitFood = foods.find(f => f && typeof f.name === 'string' && f.name.replace(/\s+/g, '').toLowerCase() === ingNameClean)
       
       matchedCount++
       matched.push(ing.name)
@@ -231,6 +249,8 @@ function matchRecipeWithFoods(foods, recipe, scenario) {
 
   const matchRate = totalRequired > 0 ? Math.round((matchedCount / totalRequired) * 100) : 0
   const canCook = matchRate >= 60
+
+  console.log('[匹配结果]', { 菜谱: recipe.name, 匹配率: matchRate + '%', 已匹配: matchedCount, 需总数: totalRequired, 已匹配列表: matched })
 
   let cookLevel = ''
   if (canCook) {
@@ -279,7 +299,10 @@ async function getSingleRecipe(recipeId, openid, scenario) {
     const res = await db.collection('recipes').doc(recipeId).get()
     const recipe = res.data
     if (!recipe) return { success: false, errMsg: '菜谱不存在', recipe: null }
-    const foods = await getUserFoods()
+    const foods = await getUserFoods(openid)
+    console.log('=== [getSingleRecipe] getUserFoods返回 ===')
+    console.log('foods数量:', Array.isArray(foods) ? foods.length : '非数组!')
+    console.log('foods内容:', JSON.stringify(foods))
     const matchResult = matchRecipeWithFoods(foods, recipe, scenario)
     return {
       recipe: { ...recipe, ...matchResult },
@@ -295,19 +318,43 @@ async function fetchRecipesFromDatabase(openid, options) {
   const { scenario, searchKey, filter, page = 1, pageSize = 10, limit } = options
 
   try {
-    const foods = await getUserFoods()
-    let query = db.collection('recipes')
-    query = query.where({
-      _openid: openid
-    });
+    const foods = await getUserFoods(openid)
+    console.log('=== [getRecipeRecommendations] getUserFoods返回 ===')
+    console.log('foods数量:', Array.isArray(foods) ? foods.length : '非数组!')
+    console.log('foods内容:', JSON.stringify(foods))
+
+    // === 查找共享冰箱组，获取同组所有成员 openid ===
+    let queryOpenids = [openid]
+    try {
+      const fridgeRes = await db.collection('shared_fridges')
+        .where({
+          $or: [
+            { ownerOpenId: openid },
+            { 'members.openId': openid }
+          ]
+        })
+        .limit(1)
+        .get()
+      if (fridgeRes.data && fridgeRes.data.length > 0) {
+        const fridge = fridgeRes.data[0]
+        queryOpenids = (fridge.members || []).map(m => m.openId)
+        console.log(`👥 [getRecipeRecommendations] 共享组菜谱查询, 成员数=${queryOpenids.length}`)
+      }
+    } catch (e) {
+      console.warn('共享组查询失败，仅查询个人菜谱:', e.message)
+    }
+
+    let cond = { _openid: _.in(queryOpenids) }
     if (searchKey && searchKey.trim()) {
-      query = query.where({
+      cond = {
+        _openid: _.in(queryOpenids),
         name: db.RegExp({
           regexp: searchKey.trim(),
           options: 'i',
         }),
-      })
+      }
     }
+    let query = db.collection('recipes').where(cond)
 
     const totalRes = await query.count()
     const total = totalRes?.total || 0
@@ -508,96 +555,6 @@ function parseMealDBUnit(measure) {
   return measure.replace(/^[\d\/\.\s]+/, '').trim()
 }
 
-/**
- * 从 MealDB 获取菜谱列表（唯一数据源）
- * ★ 核心规则：无图（strMealThumb 为空）的菜谱直接跳过
- */
-async function fetchMealDBRecipes(openid, options) {
-  const { scenario, searchKey, filter, page = 1, pageSize = 10, limit } = options
-
-  console.log(`🍽️ [MealDB] 搜索: ${searchKey || '(热门推荐)'}, 页码: ${page}`)
-
-  let mdbResult
-
-  try {
-    if (searchKey && searchKey.trim()) {
-      // 有搜索关键词 → MealDB 名称搜索
-      mdbResult = await callFetchMealDB({
-        action: 'searchByName',
-        keyword: searchKey.trim(),
-      })
-    } else {
-      // 无关键词 → 轮换分类获取推荐（根据页码选不同分类）
-      const categoryIndex = (page - 1) % MEALDB_CATEGORIES.length
-      const category = MEALDB_CATEGORIES[categoryIndex]
-      console.log(`🍽️ [MealDB] 使用分类: ${category}`)
-      mdbResult = await callFetchMealDB({
-        action: 'filterByCategory',
-        category,
-      })
-    }
-
-    if (mdbResult?.success && mdbResult.data?.meals && mdbResult.data.meals.length > 0) {
-      const foods = await getUserFoods()
-
-      const results = []
-      for (const rawMeal of mdbResult.data.meals) {
-        const recipe = normalizeMealDBToRecipe(rawMeal)
-
-        // ★★★ 核心规则：无图片的菜谱直接跳过，不进入推荐列表 ★★★
-        if (!recipe.image || !recipe.image.trim()) {
-          continue
-        }
-
-        const matchResult = matchRecipeWithFoods(foods, recipe, scenario)
-
-        if (filter === 'canCook' && !matchResult.canCook) continue
-
-        results.push(matchResult)
-      }
-
-      results.sort((a, b) => {
-        if (a.canCook !== b.canCook) return a.canCook ? -1 : 1
-        const rateDiff = (b.matchRate || 0) - (a.matchRate || 0)
-        if (rateDiff !== 0) return rateDiff
-        const bonusDiff = (b.expiringBonus || 0) - (a.expiringBonus || 0)
-        if (bonusDiff !== 0) return bonusDiff
-        if (scenario === 'single') return (a.cookTime || 999) - (b.cookTime || 999)
-        return 0
-      })
-
-      const finalResults = limit ? results.slice(0, limit) : results.slice((page - 1) * pageSize, page * pageSize)
-
-      console.log(`✅ [MealDB] 原始${mdbResult.data.meals.length}道, 过滤后返回${finalResults.length}道`)
-
-      return {
-        success: true,
-        recipes: finalResults,
-        total: results.length,
-        foodCount: foods.length,
-        page,
-        hasMore: results.length > page * pageSize,
-        source: 'mealdb',
-        errMsg: '',
-      }
-    }
-  } catch (e) {
-    console.error('❌ [MealDB] 数据获取异常:', e.message)
-  }
-
-  // MealDB 失败或无数据 → 返回空列表（不使用任何兜底数据）
-  console.log('⚠️ [MealDB] 无数据，返回空列表')
-  return {
-    success: true,
-    recipes: [],
-    total: 0,
-    foodCount: 0,
-    page,
-    hasMore: false,
-    source: 'mealdb',
-    errMsg: '暂无可用菜谱数据',
-  }
-}
 
 // ==================== 翻译层（英文→中文）====================
 

@@ -164,15 +164,16 @@ Page({
     let items: any[] = []
 
     try {
-      const db = wx.cloud.database()
-      const _ = db.command
-      const res = await db.collection('fridge_items')
-        .where({ status: _.in(['fresh', 'expiring', 'expired']) })
-        .orderBy('updatedAt', 'desc')
-        .limit(50)
-        .get()
-
-      items = res.data || []
+      const res = await wx.cloud.callFunction({ name: 'getUserFoods' })
+      const result = res.result as { success: boolean; data: any[]; message: string }
+      if (result.success) {
+        // 按更新日期降序排列
+        items = (result.data || []).sort((a, b) => {
+          const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+          const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+          return tb - ta
+        })
+      }
       console.log(`🧊 [首页] 查询到 ${items.length} 条食材`)
     } catch (e) {
       // 数据库查询失败 → 使用演示数据兜底（真机常见：权限/网络问题）

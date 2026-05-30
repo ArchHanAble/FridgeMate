@@ -32,7 +32,8 @@ exports.main = async (event, context) => {
   }
 
   try {
-    const inviteCode = 'FRIDGE-' + generateCode()
+    // const inviteCode = 'FRIDGE-' + generateCode()
+    const inviteCode = generateCode()
     console.log(`📝 [inviteShare] 生成 inviteCode=${inviteCode}`)
 
     // === Step 1: 检查是否已存在共享组 ===
