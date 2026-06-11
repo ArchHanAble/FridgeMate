@@ -42,17 +42,31 @@ exports.main = async (event, context) => {
       return { success: false, errMsg: '你已经是这个冰箱的成员了' }
     }
 
-    // === Step 3: 获取用户信息并添加到成员列表 ===
+    // === Step 3: 从 users 集合获取用户信息（昵称 + 头像） ===
     let userName = '新成员'
+    let userAvatar = ''
     try {
-      const userRes = await db.collection('user_settings').where({ _openid: openid }).limit(1).get()
-      if (userRes.data?.[0]?.nickName) userName = userRes.data[0].nickName
-    } catch (e) {}
+      const profileRes = await db.collection('users').where({ _openid: openid }).limit(1).get()
+      const profile = profileRes.data?.[0]
+      if (profile) {
+        if (profile.nickName) userName = profile.nickName
+        if (profile.avatarUrl) userAvatar = profile.avatarUrl
+      }
+    } catch (e) {
+      console.warn('⚠️ 查询 users 集合失败:', e.message || e)
+    }
+    // fallback: user_settings 集合兜底取昵称
+    if (userName === '新成员') {
+      try {
+        const fallbackRes = await db.collection('user_settings').where({ _openid: openid }).limit(1).get()
+        if (fallbackRes.data?.[0]?.nickName) userName = fallbackRes.data[0].nickName
+      } catch (e) {}
+    }
 
     const newMember = {
       openId: openid,
       name: userName,
-      avatar: null,
+      avatar: userAvatar || null,
       isOwner: false,
       joinedAt: new Date(),
     }

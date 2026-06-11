@@ -249,8 +249,8 @@
   
     <!-- ★ 状态A：已加入共享组（显示成员列表） -->
     <view wx:if="{{sharedMembers.length > 0}}">
-      <!-- 成员头像列表 -->
-      <view class="share-members-row" bindtap="inviteShare">
+      <!-- 成员头像列表（纯展示，无交互） -->
+      <view class="share-members-row">
         <scroll-view scroll-x class="member-avatars-scroll" enhanced show-scrollbar="{{false}}">
           <view class="member-avatars">
             <view class="member-avatar-item" wx:for="{{sharedMembers}}" wx:key="openId">
@@ -258,10 +258,14 @@
               <view wx:if="{{item.isOwner}}" class="member-badge member-badge--owner">主</view>
             </view>
           </view>
+          <!-- 成员昵称列表 -->
+          <view class="member-names-row">
+            <text class="member-name-tag" wx:for="{{sharedMembers}}" wx:key="openId">{{item.name || item.displayName}}{{index === sharedMembers.length - 1 ? '' : '、'}}</text>
+          </view>
         </scroll-view>
         <view class="share-status-text">
           <text class="member-count">{{sharedMembers.length}}人共享中</text>
-          <text class="share-arrow">›</text>
+          <!-- <text class="share-arrow">›</text> -->
         </view>
       </view>
   

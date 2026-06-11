@@ -227,6 +227,19 @@
   background: linear-gradient(135deg, #E8F5E9, #C8E6C9);
 }
 
+/* 成员昵称行 */
+.member-names-row {
+  display: inline-flex;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
+
+.member-name-tag {
+  font-size: 20rpx;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
 /* 成员角标 */
 .member-badge {
   position: absolute;

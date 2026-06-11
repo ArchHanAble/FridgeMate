@@ -64,14 +64,26 @@ exports.main = async (event, context) => {
       // 创建新的共享组
       console.log(`➕ [inviteShare] 创建新共享组`)
 
-      // 获取用户基本信息（可选，失败不影响主流程）
+      // 获取用户基本信息（优先从 users 集合一站式读取昵称+头像）
       let ownerName = '冰箱主人'
+      let ownerAvatar = ''
       try {
-        const userRes = await db.collection('user_settings').where({ _openid: openid }).limit(1).get()
-        if (userRes.data?.[0]?.nickName) ownerName = userRes.data[0].nickName
-        console.log(`👤 [inviteShare] ownerName=${ownerName}`)
+        const profileRes = await db.collection('users').where({ _openid: openid }).limit(1).get()
+        const profile = profileRes.data?.[0]
+        if (profile) {
+          if (profile.nickName) ownerName = profile.nickName
+          if (profile.avatarUrl) ownerAvatar = profile.avatarUrl
+        }
+        console.log(`👤 [inviteShare] ownerName=${ownerName}, hasAvatar=${!!ownerAvatar}`)
       } catch (e) {
-        console.warn(`⚠️ [inviteShare] 查询 user_settings 失败(忽略): ${e.message || e}`)
+        console.warn(`⚠️ [inviteShare] 查询 users 失败(忽略): ${e.message || e}`)
+      }
+      // fallback: user_settings 兜底
+      if (ownerName === '冰箱主人') {
+        try {
+          const fallbackRes = await db.collection('user_settings').where({ _openid: openid }).limit(1).get()
+          if (fallbackRes.data?.[0]?.nickName) ownerName = fallbackRes.data[0].nickName
+        } catch (e) {}
       }
 
       const res = await db.collection('shared_fridges').add({
@@ -82,7 +94,7 @@ exports.main = async (event, context) => {
           members: [{
             openId: openid,
             name: ownerName,
-            avatar: null,
+            avatar: ownerAvatar || null,
             isOwner: true,
             joinedAt: new Date(),
           }],
