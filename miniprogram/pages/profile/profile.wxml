@@ -259,9 +259,9 @@
             </view>
           </view>
           <!-- 成员昵称列表 -->
-          <view class="member-names-row">
+          <!-- <view class="member-names-row">
             <text class="member-name-tag" wx:for="{{sharedMembers}}" wx:key="openId">{{item.name || item.displayName}}{{index === sharedMembers.length - 1 ? '' : '、'}}</text>
-          </view>
+          </view> -->
         </scroll-view>
         <view class="share-status-text">
           <text class="member-count">{{sharedMembers.length}}人共享中</text>
