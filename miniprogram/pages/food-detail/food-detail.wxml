@@ -123,6 +123,9 @@
     <button class="btn-primary" bindtap="goRecipes" hover-class="hover-scale">
       <text>🍳 查看可用菜谱</text>
     </button>
+    <button class="btn-edit" bindtap="editItem" hover-class="hover-scale-light">
+      <text>✏️ 编辑</text>
+    </button>
     <button class="btn-secondary" catchtap="markHandled" hover-class="hover-scale-light" wx:if="{{!_id.startsWith('demo_')}}">
       <text>✅ 标记已处理</text>
     </button>

@@ -2,7 +2,7 @@
 <view class="page-container add-page">
 
   <!-- === 顶部：选择添加方式（始终显示，支持追加）=== -->
-  <view class="mode-selector">
+  <view class="mode-selector" wx:if="{{!isEditMode}}">
     <view 
       class="mode-card {{currentMode === 'manual' ? 'mode-card--active' : ''}}"
       data-mode="manual"
@@ -180,9 +180,14 @@
 
       <view class="form-group form-group--flex">
         <view class="form-label"><text>单位</text></view>
-        <picker range="{{unitOptions}}" value="{{unitIndex}}" bindchange="onUnitChange">
-          <view class="form-input form-input--picker">{{formData.unit}}</view>
-        </picker>
+        <input
+          class="form-input"
+          placeholder="如：个、瓶、盒、g、ml"
+          value="{{formData.unit}}"
+          bindinput="onInput"
+          data-field="unit"
+          maxlength="10"
+        />
       </view>
     </view>
 
@@ -237,6 +242,21 @@
       <view class="expiry-preview" wx:if="{{calculatedExpiryDate && shelfMode === 'days'}}">
         <text>📅 预计过期日期：<text class="preview-date">{{calculatedExpiryDate}}</text></text>
       </view>
+      
+      <!-- 保质期状态预览 -->
+      <!-- <view class="status-preview {{expiryStatusClass}}" wx:if="{{expiryStatus}}">
+        <view class="status-icon">
+          <text wx:if="{{expiryStatus === 'fresh'}}">✅</text>
+          <text wx:elif="{{expiryStatus === 'expiring'}}">⚠️</text>
+          <text wx:elif="{{expiryStatus === 'expired'}}">❌</text>
+        </view>
+        <view class="status-info">
+          <text class="status-text">{{expiryStatusText}}</text>
+          <text class="status-desc" wx:if="{{expiryStatus === 'expired'}}">食材已过期，建议及时处理</text>
+          <text class="status-desc" wx:elif="{{expiryStatus === 'expiring'}}">食材即将过期，请尽快食用</text>
+          <text class="status-desc" wx:else>食材状态良好</text>
+        </view>
+      </view> -->
     </view>
 
     <!-- 备注（可选） -->
@@ -258,7 +278,7 @@
   <!-- 底部按钮区 -->
   <view class="bottom-bar">
     <button class="btn-primary btn-submit {{submitting ? 'btn-submit--disabled' : ''}}" bindtap="submitForm">
-      <text>{{submitting ? '提交中...' : '✨ 加入冰箱'}}</text>
+      <text>{{submitting ? '提交中...' : (isEditMode ? '💾 保存修改' : '✨ 加入冰箱')}}</text>
     </button>
   </view>
 </view>

@@ -5,10 +5,13 @@ const _ = db.command
 
 /**
  * 管理食材 — 支持跨共享组成员操作
- * action: 'getDetail' | 'consume' | 'delete'
+ * action: 'getDetail' | 'consume' | 'update' | 'delete'
  *
  * consume: 扣减食材库存，数量归零时自动标记为已消耗
  *   event.amount: 要扣减的数量（可选，不传则直接标记消耗）
+ *
+ * update: 更新食材信息
+ *   event.updates: 要更新的字段对象 { name, brand, category, location, quantity, unit, productionDate, expiryDate, shelfLifeDays, note }
  */
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
@@ -88,6 +91,104 @@ exports.main = async (event, context) => {
           after: newQty,
           status: newQty <= 0 ? 'consumed' : 'reduced',
           errMsg: '',
+        }
+      }
+
+      case 'update': {
+        const { updates } = event
+
+        if (!updates || typeof updates !== 'object') {
+          return { success: false, errMsg: '缺少更新数据' }
+        }
+
+        // 过滤掉不允许更新的字段
+        const allowedFields = [
+          'name', 'brand', 'category', 'location',
+          'quantity', 'unit', 'productionDate',
+          'expiryDate', 'shelfLifeDays', 'note'
+        ]
+
+        // 构建安全的更新数据
+        const updateData = { updatedAt: new Date() }
+
+        for (const field of allowedFields) {
+          if (updates.hasOwnProperty(field)) {
+            updateData[field] = updates[field]
+          }
+        }
+
+        // === 自动计算保质期状态 ===
+        // 当生产日期或保质期发生变化时，重新计算状态
+        const needRecalcStatus = updates.hasOwnProperty('productionDate') || 
+                                updates.hasOwnProperty('expiryDate') || 
+                                updates.hasOwnProperty('shelfLifeDays')
+        
+        let oldStatus = item.status || 'fresh'
+        let newStatus = oldStatus
+        
+        if (needRecalcStatus) {
+          // 获取最新的过期日期
+          let finalExpiryDate = null
+          
+          // 优先使用 updates 中的 expiryDate
+          if (updates.hasOwnProperty('expiryDate')) {
+            finalExpiryDate = updates.expiryDate
+          } 
+          // 如果有 productionDate 和 shelfLifeDays，重新计算 expiryDate
+          else if (updates.hasOwnProperty('productionDate') || updates.hasOwnProperty('shelfLifeDays')) {
+            const prodDate = updates.productionDate || item.productionDate
+            const shelfLife = updates.shelfLifeDays || item.shelfLifeDays
+            if (prodDate && shelfLife) {
+              const expiry = new Date(prodDate)
+              expiry.setDate(expiry.getDate() + shelfLife)
+              finalExpiryDate = expiry.toISOString().slice(0, 10)
+              // 同时更新 expiryDate 到数据库
+              updateData.expiryDate = finalExpiryDate
+            }
+          }
+          // 否则使用原数据的 expiryDate
+          else {
+            finalExpiryDate = item.expiryDate
+          }
+          
+          if (finalExpiryDate) {
+            // 计算新的保质期状态
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const expiry = new Date(finalExpiryDate)
+            expiry.setHours(0, 0, 0, 0)
+            const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+            
+            if (diffDays < 0) {
+              newStatus = 'expired'
+            } else if (diffDays <= 3) {
+              newStatus = 'expiring'
+            } else {
+              newStatus = 'fresh'
+            }
+            
+            // 只有当原状态不是 'consumed' 时才更新状态
+            // （已消耗的食材保持 consumed 状态）
+            if (oldStatus !== 'consumed') {
+              updateData.status = newStatus
+            } else {
+              newStatus = oldStatus // 保持原状态
+            }
+          }
+        }
+
+        await db.collection('fridge_items').doc(itemId).update({ data: updateData })
+        console.log(`✅ [manageFoodItem] 更新成功: ${itemId}, status: ${oldStatus} → ${newStatus}`)
+        
+        // 返回状态变更信息给前端
+        const statusChanged = oldStatus !== newStatus
+        return { 
+          success: true, 
+          message: '更新成功', 
+          errMsg: '',
+          statusChanged,
+          oldStatus,
+          newStatus
         }
       }
 

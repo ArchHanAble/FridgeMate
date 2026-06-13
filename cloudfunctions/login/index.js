@@ -154,10 +154,33 @@ async function silentLogin(openid) {
 /**
  * 更新用户资料（头像+昵称）
  * 用户主动点击按钮触发，使用微信新版 <button open-type="chooseAvatar"> 能力
+ * 支持两种格式：
+ * - 微信临时路径（旧方案）：http://tmp/xxx.jpg
+ * - Base64 数据（新方案）：data:image/jpeg;base64,xxxxx
  */
 async function updateUserProfile(openid, profile) {
   if (!profile.nickName && !profile.avatarUrl) {
     return { success: false, errMsg: '没有需要更新的信息' }
+  }
+
+  // ====== 调试日志 ======
+  console.log(`[updateUserProfile] 开始更新用户资料`)
+  console.log(`[updateUserProfile] nickName: ${profile.nickName}`)
+  
+  if (profile.avatarUrl) {
+    const avatarType = profile.avatarUrl.startsWith('data:image') ? 'Base64' : 'URL'
+    console.log(`[updateUserProfile] avatarUrl 类型: ${avatarType}`)
+    console.log(`[updateUserProfile] avatarUrl 长度: ${profile.avatarUrl.length}`)
+    
+    if (avatarType === 'Base64') {
+      const sizeKB = Math.round(profile.avatarUrl.length / 1024)
+      console.log(`[updateUserProfile] Base64 大小: ${sizeKB} KB`)
+      
+      if (sizeKB > 900) {
+        console.error(`[updateUserProfile] ⚠️ 头像 Base64 数据过大(${sizeKB}KB)，可能超过数据库限制!`)
+        // 可以在这里选择性地压缩或拒绝
+      }
+    }
   }
 
   // 构建更新数据
@@ -166,9 +189,17 @@ async function updateUserProfile(openid, profile) {
   if (profile.avatarUrl) updateData.avatarUrl = profile.avatarUrl
   updateData.updatedAt = new Date()
 
-  const res = await db.collection('users')
-    .where({ _openid: openid })
-    .update({ data: updateData })
+  let res
+  try {
+    res = await db.collection('users')
+      .where({ _openid: openid })
+      .update({ data: updateData })
+    
+    console.log(`[updateUserProfile] ✅ 更新成功，影响行数: ${res.stats?.updated || 0}`)
+  } catch (dbError) {
+    console.error('[updateUserProfile] ❌ 数据库更新失败:', dbError)
+    throw dbError
+  }
 
   console.log(`📝 [资料更新] openid=${openid.substring(0,8)}..., fields=${Object.keys(updateData).join(',')}`)
 

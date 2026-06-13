@@ -200,7 +200,7 @@ Page({
   },
 
   /**
-   * 选择头像回调
+   * 选择头像回调 - Base64 存储方案
    * 使用 <button open-type="chooseAvatar"> 触发
    */
   async onChooseAvatar(e: any) {
@@ -209,13 +209,71 @@ Page({
 
     console.log('📷 用户选择了新头像')
 
+    // 先显示原始头像用于预览
     this.setData({
       'userInfo.avatarUrl': avatarUrl,
       isEditingProfile: true,
     })
 
-    // 立即上传到云端
-    this._saveProfileToCloud()
+    // ====== 转换为 Base64 并压缩 ======
+    try {
+      wx.showLoading({ title: '处理头像中...' })
+
+      let finalPath = avatarUrl
+
+      // 压缩头像（头像通常较小，但仍需确保不超过数据库限制）
+      const compressRes = await wx.compressImage({
+        src: avatarUrl,
+        quality: 60,           // 压缩质量
+        compressedWidth: 200,  // 头像尺寸限制为 200px 足够清晰
+        compressedHeight: 200,
+      })
+      finalPath = compressRes.tempFilePath
+      console.log('[onChooseAvatar] 头像压缩成功:', avatarUrl, '->', finalPath)
+
+      // 转换为 Base64
+      const fs = wx.getFileSystemManager()
+      let base64Data = ''
+      try {
+        const fileData = fs.readFileSync(finalPath, 'base64')
+        base64Data = typeof fileData === 'string' ? fileData : ''
+      } catch (readErr: any) {
+        console.warn('[onChooseAvatar] readFileSync 失败，尝试异步方式:', readErr)
+        base64Data = await new Promise<string>((resolve, reject) => {
+          fs.readFile({
+            filePath: finalPath,
+            encoding: 'base64',
+            success(fileRes: any) { resolve(String(fileRes.data)) },
+            fail(err: any) { reject(err) }
+          })
+        })
+      }
+
+      if (base64Data) {
+        // 检查大小
+        const sizeKB = Math.round(base64Data.length * 3 / 4 / 1024)
+        console.log(`[onChooseAvatar] Base64 大小: ${sizeKB} KB`)
+
+        // 构造完整的 data URL 格式
+        const base64Image = `data:image/jpeg;base64,${base64Data}`
+
+        // 更新数据为 Base64 格式
+        this.setData({ 'userInfo.avatarUrl': base64Image })
+        console.log('[onChooseAvatar] ✅ 头像已转换为 Base64')
+      } else {
+        console.warn('[onChooseAvatar] ⚠️ Base64 转换失败，使用原始路径')
+      }
+
+      wx.hideLoading()
+
+      // 上传到云端（Base64 或原始路径）
+      this._saveProfileToCloud()
+    } catch (error: any) {
+      wx.hideLoading()
+      console.error('[onChooseAvatar] 处理头像失败:', error)
+      // 即使转换失败也尝试保存原始路径
+      this._saveProfileToCloud()
+    }
   },
 
   /**
@@ -382,12 +440,70 @@ Page({
       
       if (fridge) {
         console.log('✅ 找到共享冰箱:', fridge)
-        const members = (fridge.members || []).map((m: any, i: number) => ({
-          ...m,
-          displayName: m.name || '成员' + (i + 1),
-        }))
+
+        // 获取所有成员的 openId 列表（包括 owner）
+        const memberOpenIds = (fridge.members || []).map((m: any) => m.openId).filter(Boolean)
+        const allOpenIds = [...new Set([fridge.ownerOpenId, ...memberOpenIds])]
+
+        console.log('👥 成员 openId 列表:', allOpenIds)
+
+        // 批量查询 users 表获取成员详细信息
+        let userInfoMap: Record<string, any> = {}
+        try {
+          if (allOpenIds.length > 0) {
+            const usersRes = await db.collection('users')
+              .where({ _openid: db.command.in(allOpenIds) })
+              .get()
+
+            // 构建 openId -> 用户信息的映射
+            ;(usersRes.data || []).forEach((user: any) => {
+              userInfoMap[user._openid] = {
+                nickName: user.nickName || '',
+                avatarUrl: user.avatarUrl || '',
+              }
+            })
+
+            console.log('📋 查询到的用户信息:', Object.keys(userInfoMap).length, '条')
+          }
+        } catch (userErr) {
+          console.warn('⚠️ 获取用户信息失败，使用默认数据:', userErr)
+        }
+
+        // 组装完整的成员列表（包含 owner）
+        const allMembers: any[] = []
+
+        // 添加 owner
+        const ownerInfo = userInfoMap[fridge.ownerOpenId] || {}
+        allMembers.push({
+          openId: fridge.ownerOpenId,
+          name: ownerInfo.nickName || '管理员',
+          avatarUrl: ownerInfo.avatarUrl || '',
+          role: 'owner',
+          displayName: ownerInfo.nickName || '管理员',
+        })
+
+        // 添加其他成员
+        ;(fridge.members || []).forEach((m: any) => {
+          if (m.openId !== fridge.ownerOpenId) {  // 避免重复添加 owner
+            const memberInfo = userInfoMap[m.openId] || {}
+            allMembers.push({
+              ...m,
+              avatarUrl: memberInfo.avatarUrl || '',
+              nickName: memberInfo.nickName || '',
+              displayName: memberInfo.nickName || m.name || `成员${allMembers.length}`,
+              role: 'member',
+            })
+          }
+        })
+
+        console.log('✅ 最终成员列表:', allMembers.map(m => ({
+          name: m.displayName,
+          role: m.role,
+          hasAvatar: !!m.avatarUrl,
+        })))
+
         this.setData({
-          sharedMembers: members,
+          sharedMembers: allMembers,
           isOwner: fridge.ownerOpenId === myOpenid,
           currentFridgeId: fridge._id,
         })

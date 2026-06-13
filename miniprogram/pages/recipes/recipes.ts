@@ -44,14 +44,39 @@ Page({
     // currentSource: 'database',
   },
 
+  // 标记从详情页带入的搜索关键词
+  _pendingIngredient: '' as string,
+
   onLoad() {
-    const app = getApp<IAppOption>()
-    this.setData({ scenario: app.globalData.scenario })
-    this.loadRecipes()
+    // 注意：菜谱页是 tabBar 页面，switchTab 跳转不会传递 query 参数，
+    // 所有跳转逻辑通过 onShow + 全局缓存 app._pendingIngredient 处理
+    const app = getApp<any>()
+
+    // ★ 如果全局缓存已有 pending 关键词（从食材详情页跳转来），
+    // 不调用 loadRecipes，等 onShow 统一触发带关键词的搜索，
+    // 避免与 onShow 中 force=true 的调用形成并发竞态
+    if (app._pendingIngredient) {
+      this._pendingIngredient = app._pendingIngredient
+    } else {
+      this.setData({ scenario: app.globalData.scenario })
+      this.loadRecipes()
+    }
   },
 
   onShow() {
-    const app = getApp<IAppOption>()
+    const app = getApp<any>()
+
+    // ★ 从食材详情页跳转过来时，app._pendingIngredient 已在 switchTab 前写入
+    if (app._pendingIngredient && app._pendingIngredient !== this.data.searchKey) {
+      const keyword = app._pendingIngredient
+      this._pendingIngredient = keyword
+      app._pendingIngredient = ''  // 消费后清空，避免重复触发
+      // ★ 强制重新搜索：force=true 忽略 loading 守卫，确保关键词被使用
+      this.setData({ searchKey: keyword })
+      this.loadRecipes(false, keyword, true)
+      return
+    }
+
     const scenario = app.globalData.scenario
     if (scenario !== this.data.scenario) {
       this.setData({ scenario }, () => this.loadRecipes())
@@ -64,13 +89,20 @@ Page({
     this.loadRecipes().then(() => wx.stopPullDownRefresh())
   },
 
-  /** 加载菜谱（纯云数据库数据源） */
-  async loadRecipes(append = false) {
-    if (this.data.loading && !append) return
+  /** 加载菜谱（纯云数据库数据源）
+   * @param append 是否追加模式（翻页）
+   * @param searchKeyOverride 搜索关键词覆盖（用于 setData 异步未生效时直接传入）
+   * @param force 强制重新加载（忽略 loading 守卫，用于 onShow 中抢在并发加载前应用搜索词）
+   */
+  async loadRecipes(append = false, searchKeyOverride?: string, force = false) {
+    if (this.data.loading && !append && !force) return
+
+    const effectiveSearchKey = searchKeyOverride ?? this.data.searchKey.trim()
 
     this.setData({
       loading: !append,
       loadingMore: append,
+      searchKey: searchKeyOverride ?? this.data.searchKey,
       page: append ? this.data.page + 1 : 1,
     })
 
@@ -79,7 +111,7 @@ Page({
         name: 'getRecipeRecommendations',
         data: {
           scenario: this.data.scenario,
-          searchKey: this.data.searchKey.trim(),
+          searchKey: effectiveSearchKey,
           // filter: this.data.currentFilter === 'all' ? undefined : this.data.currentFilter,
           page: append ? this.data.page + 1 : 1,
           pageSize: this.data.pageSize,

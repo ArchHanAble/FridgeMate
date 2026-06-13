@@ -254,8 +254,14 @@
         <scroll-view scroll-x class="member-avatars-scroll" enhanced show-scrollbar="{{false}}">
           <view class="member-avatars">
             <view class="member-avatar-item" wx:for="{{sharedMembers}}" wx:key="openId">
-              <image class="member-avatar-img" src="{{item.avatar || '/images/default-avatar.png'}}" mode="aspectFill" />
-              <view wx:if="{{item.isOwner}}" class="member-badge member-badge--owner">主</view>
+              <!-- 优先显示 avatarUrl（从 users 表获取的 Base64），其次 avatar -->
+              <image
+                class="member-avatar-img"
+                src="{{item.avatarUrl || item.avatar || '/images/default-avatar.png'}}"
+                mode="aspectFill"
+              />
+              <!-- 显示管理员标识 -->
+              <view wx:if="{{item.role === 'owner'}}" class="member-badge member-badge--owner">主</view>
             </view>
           </view>
           <!-- 成员昵称列表 -->

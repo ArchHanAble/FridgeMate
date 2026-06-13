@@ -344,20 +344,36 @@ async function fetchRecipesFromDatabase(openid, options) {
       console.warn('共享组查询失败，仅查询个人菜谱:', e.message)
     }
 
-    let cond = { _openid: _.in(queryOpenids) }
+    // 始终按 openid 范围查所有菜谱，不走云端搜索条件
+    // 原因：数据库中 ingredients 字段是 Object（数字键）而非 Array，
+    // 云函数 $or + elemMatch 及 RegExp 无法正确匹配，统一在内存中过滤
+    const query = db.collection('recipes').where({ _openid: _.in(queryOpenids) })
+
+    // 构造内存搜索匹配函数（兼容 Array 和 Object 两种 ingredients 结构）
+    let inMemoryFilter = null
     if (searchKey && searchKey.trim()) {
-      cond = {
-        _openid: _.in(queryOpenids),
-        name: db.RegExp({
-          regexp: searchKey.trim(),
-          options: 'i',
-        }),
+      const k = searchKey.trim().toLowerCase()
+      inMemoryFilter = (r) => {
+        if (!r) return false
+        // 匹配菜谱名称
+        if (typeof r.name === 'string' && r.name.toLowerCase().includes(k)) return true
+        // 匹配配料名称
+        const ings = r.ingredients
+        if (ings) {
+          // 兼容数组 [] 和对象 { "0": {...}, "1": {...} }
+          const entries = Array.isArray(ings) ? ings : Object.values(ings)
+          for (const ing of entries) {
+            if (ing && typeof ing.name === 'string' && ing.name.toLowerCase().includes(k)) return true
+          }
+        }
+        return false
       }
     }
-    let query = db.collection('recipes').where(cond)
 
+    // 先 count 总数
     const totalRes = await query.count()
-    const total = totalRes?.total || 0
+    let total = totalRes?.total || 0
+
     if (!total) {
       return {
         success: true,
@@ -371,18 +387,51 @@ async function fetchRecipesFromDatabase(openid, options) {
       }
     }
 
-    const fetchLimit = limit ? Math.max(limit, pageSize) : pageSize
-    const skip = limit ? 0 : (page - 1) * pageSize
+    // 拉到本地，若有关键词则在内存中过滤
+    // ★ 有搜索关键词时：DB 层不做 skip（内存分页），用较大 limit 拉取保证覆盖率
+    // ★ 无搜索关键词时：正常 DB 层分页
+    const fetchAll = !!inMemoryFilter
+    const fetchLimit = limit || (fetchAll ? 200 : pageSize)
+    const dbSkip = fetchAll ? 0 : (page - 1) * pageSize
 
     const listRes = await query
       .orderBy('updatedAt', 'desc')
-      .skip(skip)
+      .skip(dbSkip)
       .limit(fetchLimit)
       .get()
 
-    let results = (listRes.data || [])
+    // ====== 调试日志 ======
+    console.log('[getRecipeRecommendations] 查询到菜谱数量:', listRes.data?.length || 0)
+    if (listRes.data && listRes.data.length > 0) {
+      listRes.data.forEach((recipe, idx) => {
+        console.log(`[getRecipeRecommendations] 菜谱${idx}:`, {
+          _id: recipe._id,
+          name: recipe.name,
+          imageLength: recipe.image ? String(recipe.image).length : 0,
+          imagePreview: recipe.image ? String(recipe.image).substring(0, 50) + '...' : '空',
+        })
+      })
+    }
+
+    // ★ 如有搜索关键词，在内存中按菜谱名/配料名过滤（兼容 Object 和 Array）
+    let filteredData = listRes.data || []
+    if (inMemoryFilter) {
+      filteredData = filteredData.filter(inMemoryFilter)
+      console.log(`[getRecipeRecommendations] 内存过滤后: ${filteredData.length} 条 (原 ${(listRes.data || []).length} 条)`)
+      // 重置 total 用于分页
+      total = filteredData.length
+    }
+
+    let results = filteredData
       .filter(r => r && r.image && String(r.image).trim())
       .map(recipe => matchRecipeWithFoods(foods, recipe, scenario))
+
+    // 过滤后的结果统计
+    const filteredCount = results.length
+    const originalCount = (listRes.data || []).length
+    if (filteredCount < originalCount) {
+      console.warn(`[getRecipeRecommendations] ⚠️ 因 image 为空过滤了 ${originalCount - filteredCount} 条记录`)
+    }
 //展示所有菜谱
     // if (filter === 'canCook') {
     //   results = results.filter(r => r.canCook)
@@ -400,7 +449,14 @@ async function fetchRecipesFromDatabase(openid, options) {
       return (b.expiringBonus || 0) - (a.expiringBonus || 0)
     })
 
-    const finalResults = limit ? results.slice(0, limit) : results
+    // 有搜索关键词时在内存中分页
+    let finalResults
+    if (inMemoryFilter) {
+      const start = (page - 1) * pageSize
+      finalResults = results.slice(start, start + pageSize)
+    } else {
+      finalResults = limit ? results.slice(0, limit) : results
+    }
 
     return {
       success: true,
@@ -408,7 +464,9 @@ async function fetchRecipesFromDatabase(openid, options) {
       total,
       foodCount: foods.length,
       page,
-      hasMore: limit ? false : page * pageSize < total,
+      hasMore: inMemoryFilter
+        ? page * pageSize < total
+        : limit ? false : page * pageSize < total,
       source: 'database',
       errMsg: '',
     }

@@ -1,0 +1,1 @@
+{"name": "uploadToQiniu", "version": "1.0.0", "description": "上传菜谱图片到七牛云存储", "main": "index.js", "dependencies": {"qiniu": "^7.8.0", "wx-server-sdk": "~2.6.3"}}

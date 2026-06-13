@@ -128,6 +128,15 @@ Page({
     }
   },
 
+  /** 页面重新显示时刷新数据（编辑后返回时确保数据最新） */
+  onShow() {
+    // 跳过首次 onShow（因为 onLoad 已经加载过数据）
+    if (this.data._initialLoadDone && this.data._id) {
+      this._loadDetail()
+    }
+    this.data._initialLoadDone = true
+  },
+
   async _loadDetail() {
     wx.showLoading({ title: '加载中...' })
     
@@ -241,7 +250,20 @@ Page({
   goRecipes() {
     // 带上当前食材名作为搜索关键词，方便筛选相关菜谱
     const keyword = encodeURIComponent(this.data.name || '')
-    wx.navigateTo({ url: `/pages/recipes/recipes?ingredient=${keyword}` })
+    // ★ 关键：tabBar 页面即便 onLoad 不再触发，参数仍可由 onShow 读取
+    // 这里同时写入全局缓存，供菜谱页 onShow 兜底读取
+    const app = getApp<any>()
+    app._pendingIngredient = decodeURIComponent(keyword)
+
+    // 注意：菜谱页是 tabBar 页面，必须使用 switchTab 才能跳转
+    wx.switchTab({
+      url: `/pages/recipes/recipes?ingredient=${keyword}`,
+      fail: (err) => {
+        // 兜底：若页面配置发生变化不再属于 tabBar，尝试普通跳转
+        console.warn('switchTab 失败，回退到 navigateTo:', err)
+        wx.navigateTo({ url: `/pages/recipes/recipes?ingredient=${keyword}` })
+      },
+    })
   },
 
   /** 标记已处理（将状态改为 consumed） */

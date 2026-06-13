@@ -25,11 +25,26 @@ exports.main = async (event, context) => {
       nutrition = null,
     } = event
 
+    // ====== 调试日志 ======
+    console.log('[addRecipe] 开始处理菜谱添加请求')
+    console.log(`[addRecipe] 菜名: ${name}`)
+    console.log(`[addRecipe] image 类型: ${typeof image}`)
+    console.log(`[addRecipe] image 长度: ${image ? String(image).length : 0}`)
+    console.log(`[addRecipe] image 前100字符: ${image ? String(image).substring(0, 100) : '空'}`)
+
     if (!name || !String(name).trim()) {
       return { success: false, errMsg: '请填写菜名' }
     }
     if (!image || !String(image).trim()) {
+      console.error('[addRecipe] ❌ image 为空!')
       return { success: false, errMsg: '请上传封面图' }
+    }
+
+    // 检查 image 大小（Base64 编码后约 1/3 增长）
+    const imageSizeKB = Math.round(String(image).length / 1024)
+    console.log(`[addRecipe] image 数据大小: ${imageSizeKB} KB`)
+    if (imageSizeKB > 900) {
+      console.error(`[addRecipe] ⚠️ image 数据过大(${imageSizeKB}KB)，可能超过数据库限制!`)
     }
     if (!ingredients.length) {
       return { success: false, errMsg: '请至少添加一种食材' }
@@ -101,7 +116,17 @@ exports.main = async (event, context) => {
       updatedAt: now,
     }
 
-    const res = await db.collection('recipes').add({ data: dataToSave })
+    // ====== 写入前日志 ======
+    console.log(`[addRecipe] 准备写入数据库，dataToSave.image 长度: ${dataToSave.image.length}`)
+
+    let res
+    try {
+      res = await db.collection('recipes').add({ data: dataToSave })
+      console.log(`[addRecipe] ✅ 写入成功! _id: ${res._id}`)
+    } catch (dbError) {
+      console.error('[addRecipe] ❌ 数据库写入失败:', dbError)
+      throw dbError
+    }
 
     return {
       success: true,

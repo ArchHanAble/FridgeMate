@@ -7,7 +7,7 @@ import {
   LOCATION_LABELS,
   EXPIRY_STATUS,
 } from '../../utils/constants'
-import { calcExpiryDate, formatDate } from '../../utils/date'
+import { calcExpiryDate, formatDate, getExpiryStatus, getExpiryText, daysBetween } from '../../utils/date'
 
 /** 单次识别结果（支持多来源追加） */
 interface SourceResult {
@@ -36,6 +36,10 @@ Page({
     // 当前选中的模式（仅高亮用）
     currentMode: 'manual',
 
+    // 编辑模式
+    isEditMode: false,
+    editItemId: '',
+
     /** 多来源结果列表（追加模式） */
     results: [] as SourceResult[],
 
@@ -56,8 +60,6 @@ Page({
     // 分类选项（用于picker）
     categories: [] as any[],
     locations: [] as any[],
-    unitOptions: ['个', '瓶', '盒', '袋', '包', '罐', '根', '块', '颗', '斤', '克', 'ml', 'L', '份'],
-    unitIndex: 0,
 
     // 保质期输入方式：days | date
     shelfMode: 'days',
@@ -74,15 +76,88 @@ Page({
     today: formatDate(new Date()),
     maxProdDate: formatDate(new Date()),
     submitting: false,
+    
+    // 保质期状态预览
+    expiryStatus: '',
+    expiryStatusText: '',
+    expiryStatusClass: '',
+    daysRemaining: 0,
   },
 
   onLoad(options) {
     this._buildCategories()
     this._buildLocations()
 
+    // 检测是否为编辑模式
+    if (options?.mode === 'edit' && options?.id) {
+      this.setData({
+        isEditMode: true,
+        editItemId: options.id,
+      })
+      wx.setNavigationBarTitle({ title: '编辑食材' })
+      this._loadItemForEdit(options.id)
+      return
+    }
+
     if (options?.mode && ['scan', 'photo'].includes(options.mode)) {
       if (options.mode === 'scan') this.startScan()
       else this.takePhoto()
+    }
+  },
+
+  /**
+   * 加载现有食材数据用于编辑
+   */
+  async _loadItemForEdit(itemId: string) {
+    wx.showLoading({ title: '加载中...' })
+    
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'manageFoodItem',
+        data: { action: 'getDetail', itemId }
+      })
+      const result = res.result as { success: boolean; data?: any; errMsg: string }
+      
+      if (!result.success || !result.data) {
+        wx.showToast({ title: result.errMsg || '食材不存在', icon: 'none' })
+        setTimeout(() => wx.navigateBack(), 1500)
+        return
+      }
+
+      const item = result.data
+      
+      // 确定保质期输入模式
+      let shelfMode = 'days'
+      if (item.expiryDate && !item.shelfLifeDays) {
+        shelfMode = 'date'
+      } else if (item.expiryDate && item.shelfLifeDays) {
+        shelfMode = 'days'
+      }
+
+      // 填充表单数据
+      this.setData({
+        formData: {
+          name: item.name || '',
+          brand: item.brand || '',
+          category: item.category || 'vegetable',
+          location: item.location || 'fridge',
+          quantity: item.quantity || 1,
+          unit: item.unit || '个',
+          productionDate: item.productionDate || '',
+          shelfLifeDays: item.shelfLifeDays ? String(item.shelfLifeDays) : '',
+          expiryDate: item.expiryDate || '',
+          note: item.note || '',
+        },
+        shelfMode,
+      }, () => this._calcExpiry())
+      
+      // 隐藏顶部的添加方式选择（编辑模式下不需要）
+    } catch (e) {
+      console.error('加载食材数据失败:', e)
+      wx.showToast({ title: '加载失败', icon: 'none' })
+      setTimeout(() => wx.navigateBack(), 1500)
+    } finally {
+      wx.hideLoading()
     }
   },
 
@@ -502,22 +577,14 @@ Page({
     this.setData({ 'formData.quantity': newQty })
   },
 
-  onUnitChange(e: WechatMiniprogram.PickerChange) {
-    const idx = Number(e.detail.value)
-    this.setData({
-      unitIndex: idx,
-      'formData.unit': this.data.unitOptions[idx],
-    })
-  },
-
   onDateChange(e: WechatMiniprogram.PickerChange) {
     const field = e.currentTarget.dataset.field as string
     this.setData({ [`formData.${field}`]: e.detail.value } as any)
-    if (field === 'productionDate') this._calcExpiry()
+    if (field === 'productionDate' || field === 'expiryDate') this._calcExpiry()
   },
 
   switchShelfMode(e: WechatMiniprogram.TouchEvent) {
-    this.setData({ shelfMode: e.currentTarget.dataset.val })
+    this.setData({ shelfMode: e.currentTarget.dataset.val }, () => this._calcExpiry())
   },
 
   setPresetShelf(e: WechatMiniprogram.TouchEvent) {
@@ -525,14 +592,39 @@ Page({
     this.setData({ 'formData.shelfLifeDays': String(days) }, () => this._calcExpiry())
   },
 
-  /** 计算过期日期（预览用） */
+  /** 计算过期日期和保质期状态（预览用） */
   _calcExpiry() {
-    const { productionDate, shelfLifeDays } = this.data.formData
+    const { productionDate, shelfLifeDays, expiryDate } = this.data.formData
+    let calculatedExpiryDate = ''
+    
+    // 计算过期日期
     if (productionDate && shelfLifeDays && !isNaN(Number(shelfLifeDays))) {
-      const expiry = calcExpiryDate(productionDate, Number(shelfLifeDays))
-      this.setData({ calculatedExpiryDate: expiry })
+      calculatedExpiryDate = calcExpiryDate(productionDate, Number(shelfLifeDays))
+      this.setData({ calculatedExpiryDate })
     } else {
       this.setData({ calculatedExpiryDate: '' })
+    }
+    
+    // 计算保质期状态预览
+    const finalExpiryDate = expiryDate || calculatedExpiryDate
+    if (finalExpiryDate) {
+      const status = getExpiryStatus(finalExpiryDate)
+      const statusText = getExpiryText(finalExpiryDate)
+      const days = daysBetween(finalExpiryDate)
+      
+      this.setData({
+        expiryStatus: status,
+        expiryStatusText: statusText,
+        expiryStatusClass: status,
+        daysRemaining: days >= 0 ? days : -days,
+      })
+    } else {
+      this.setData({
+        expiryStatus: '',
+        expiryStatusText: '',
+        expiryStatusClass: '',
+        daysRemaining: 0,
+      })
     }
   },
 
@@ -569,7 +661,7 @@ Page({
     this.setData({ submitting: true })
 
     try {
-      const { formData, shelfMode, results } = this.data
+      const { formData, shelfMode, results, isEditMode, editItemId } = this.data
 
       const dataToSave: Record<string, any> = {
         name: formData.name.trim(),
@@ -580,16 +672,7 @@ Page({
         unit: formData.unit || '个',
         productionDate: formData.productionDate,
         note: formData.note?.trim(),
-        status: 'fresh',
-        // 来源记录（可能多个）
-        sources: results.map((r: SourceResult) => r.type),
-        createdAt: new Date(),
         updatedAt: new Date(),
-      }
-
-      // 收集条码（从所有扫码结果中取第一个有效的）
-      for (const r of results) {
-        if (r.barcode) { dataToSave.barcode = r.barcode; break }
       }
 
       // 处理保质期
@@ -607,21 +690,66 @@ Page({
         }
       }
 
-      const res = await wx.cloud.callFunction({
-        name: 'addFoodItem',
-        data: dataToSave,
-      })
+      let res: any
 
-      if (res.result?.success || res.result?._id || res.result?.id) {
-        wx.showToast({ title: '✨ 已加入冰箱！', icon: 'success', duration: 1500 })
-        setTimeout(() => wx.navigateBack(), 1200)
+      if (isEditMode) {
+        // 编辑模式：调用更新接口
+        dataToSave._id = editItemId
+        res = await wx.cloud.callFunction({
+          name: 'manageFoodItem',
+          data: { action: 'update', itemId: editItemId, updates: dataToSave },
+        })
+
+        if (res.result?.success) {
+          // 检查状态是否变更，给出相应提示
+          const { statusChanged, oldStatus, newStatus } = res.result
+          const statusLabels = { fresh: '新鲜', expiring: '临期', expired: '已过期', consumed: '已用完' }
+          
+          if (statusChanged) {
+            const oldLabel = statusLabels[oldStatus] || oldStatus
+            const newLabel = statusLabels[newStatus] || newStatus
+            wx.showModal({
+              title: '更新成功',
+              content: `食材「${dataToSave.name}」已更新。\n状态变更：${oldLabel} → ${newLabel}`,
+              showCancel: false,
+              confirmText: '知道了',
+              confirmColor: '#FF6A88'
+            })
+          } else {
+            wx.showToast({ title: '✨ 更新成功！', icon: 'success', duration: 1500 })
+          }
+          setTimeout(() => wx.navigateBack(), statusChanged ? 3000 : 1200)
+        } else {
+          throw new Error(res.result?.errMsg || '更新失败')
+        }
       } else {
-        throw new Error(res.result?.errMsg || '保存失败')
+        // 新增模式：原有逻辑
+        dataToSave.status = 'fresh'
+        // 来源记录（可能多个）
+        dataToSave.sources = results.map((r: SourceResult) => r.type)
+        dataToSave.createdAt = new Date()
+
+        // 收集条码（从所有扫码结果中取第一个有效的）
+        for (const r of results) {
+          if (r.barcode) { dataToSave.barcode = r.barcode; break }
+        }
+
+        res = await wx.cloud.callFunction({
+          name: 'addFoodItem',
+          data: dataToSave,
+        })
+
+        if (res.result?.success || res.result?._id || res.result?.id) {
+          wx.showToast({ title: '✨ 已加入冰箱！', icon: 'success', duration: 1500 })
+          setTimeout(() => wx.navigateBack(), 1200)
+        } else {
+          throw new Error(res.result?.errMsg || '保存失败')
+        }
       }
     } catch (e: any) {
       console.error('提交失败:', e)
       wx.showToast({ 
-        title: e.message || '添加失败，请重试', 
+        title: e.message || (this.data.isEditMode ? '更新失败' : '添加失败') + '，请重试', 
         icon: 'none' 
       })
     } finally {

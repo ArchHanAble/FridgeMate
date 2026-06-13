@@ -299,7 +299,8 @@
 }
 
 .btn-primary,
-.btn-secondary {
+.btn-secondary,
+.btn-edit {
   flex: 1;
   height: 88rpx;
   display: flex;
@@ -317,6 +318,11 @@
 .btn-primary {
   background: #1a1a1a;
   color: #fff;
+}
+.btn-edit {
+  background: #FFF3E0;
+  color: #E67700;
+  border: 1rpx solid rgba(230,119,0,0.2);
 }
 .btn-secondary {
   background: #fff;
