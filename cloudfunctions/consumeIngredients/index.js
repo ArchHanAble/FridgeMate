@@ -6,17 +6,20 @@ const _ = db.command
 
 /**
  * 一键清耗食材 - 做完菜后扣减冰箱中已用的食材库存
+ * 
+ * 支持自定义食材数量：传入 customIngredients 数组，每个元素包含 { name, amount, unit }
+ * 如果不传入 customIngredients，则使用菜谱中定义的数量
  */
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const { recipeId } = event
+  const { recipeId, customIngredients } = event
 
   if (!recipeId) {
     return { success: false, errMsg: '菜谱ID不能为空' }
   }
 
-  console.log(`🍳 开始清耗食材, 菜谱ID: ${recipeId}`)
+  console.log(`🍳 开始清耗食材, 菜谱ID: ${recipeId}, 自定义数量: ${customIngredients ? '是' : '否'}`)
 
   try {
     // === Step 1: 获取菜谱信息 ===
@@ -27,7 +30,8 @@ exports.main = async (event, context) => {
     }
     
     const recipe = recipeRes.data
-    const ingredients = recipe.ingredients || []
+    // 如果使用自定义数量，则使用 customIngredients，否则使用菜谱中的 ingredients
+    const ingredients = customIngredients || recipe.ingredients || []
 
     if (!ingredients.length) {
       return { success: true, message: '该菜谱无需消耗食材', consumed: [] }

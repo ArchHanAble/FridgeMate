@@ -143,9 +143,55 @@
     </button>
     <button
       class="action-cook {{canCook ? 'action-cook--ready' : ''}}"
-      catchtap="handleConsume"
+      catchtap="showConsumeModal"
     >
       <text>{{canCook ? '✨ 一键清耗食材' : '⚡ 做好啦'}}</text>
     </button>
+  </view>
+
+  <!-- 清耗食材弹窗 -->
+  <view class="consume-modal-mask" wx:if="{{showConsumeModal}}" bindtap="hideConsumeModal">
+    <view class="consume-modal" catchtap="preventBubble">
+      <view class="consume-modal-header">
+        <view class="consume-modal-title-wrap">
+          <text class="consume-modal-icon">📦</text>
+          <text class="consume-modal-title">清耗食材</text>
+        </view>
+        <view class="consume-modal-close" bindtap="hideConsumeModal">✕</view>
+      </view>
+      
+      <view class="consume-modal-body">
+        <view class="consume-modal-desc">请确认要清耗的食材数量，可手动调整</view>
+        
+        <view class="consume-ingredient-list">
+          <view class="consume-ingredient-item" wx:for="{{consumeIngredients}}" wx:key="name">
+            <view class="consume-ingredient-info">
+              <text class="consume-ingredient-name">{{item.name}}</text>
+              <text class="consume-ingredient-unit">（{{item.unit}}）</text>
+            </view>
+            <view class="consume-ingredient-quantity">
+              <view class="quantity-btn quantity-btn--minus" bindtap="decreaseQuantity" data-index="{{index}}">
+                <text>-</text>
+              </view>
+              <input 
+                class="quantity-input" 
+                type="digit" 
+                value="{{item.amount}}" 
+                bindinput="onQuantityInput"
+                data-index="{{index}}"
+              />
+              <view class="quantity-btn quantity-btn--plus" bindtap="increaseQuantity" data-index="{{index}}">
+                <text>+</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      
+      <view class="consume-modal-footer">
+        <button class="consume-btn-cancel" bindtap="hideConsumeModal">取消</button>
+        <button class="consume-btn-confirm" bindtap="confirmConsume">确认清耗</button>
+      </view>
+    </view>
   </view>
 </view>

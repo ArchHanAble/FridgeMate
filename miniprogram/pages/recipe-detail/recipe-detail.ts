@@ -31,6 +31,10 @@ Page({
     // 标记做过状态
     isRecorded: false,
     isRecording: false,
+
+    // 清耗食材弹窗
+    showConsumeModal: false,
+    consumeIngredients: [] as any[],
   },
 
   onLoad(options) {
@@ -299,35 +303,96 @@ Page({
     wx.showToast({ title: `已添加 ${items.length} 种食材到购物清单`, icon: 'success' })
   },
 
-  handleConsume() {
-    wx.showModal({
-      title: '确认清耗',
-      content: `确定已做完「${this.data.name}」？将扣减对应的食材库存。`,
-      confirmText: '做好了✨',
-      success: async (res) => {
-        if (res.confirm) {
-          await this._doConsume()
-        }
-      },
+  /** 显示清耗食材弹窗 */
+  showConsumeModal() {
+    // 从 displayIngredients 中提取食材信息，用于弹窗展示
+    const consumeIngredients = (this.data.displayIngredients || []).map((ing: any) => ({
+      name: ing.name,
+      amount: Number(ing.amount) || 1,
+      unit: ing.unit || '份',
+    }))
+
+    this.setData({
+      showConsumeModal: true,
+      consumeIngredients,
     })
   },
 
-  async _doConsume() {
-    wx.showLoading({ title: '处理中...' })
+  /** 隐藏清耗食材弹窗 */
+  hideConsumeModal() {
+    this.setData({ showConsumeModal: false })
+  },
+
+  /** 阻止事件冒泡 */
+  preventBubble() {
+    // 空函数，用于阻止事件冒泡
+  },
+
+  /** 减少食材数量 */
+  decreaseQuantity(e: any) {
+    const index = e.currentTarget.dataset.index
+    const consumeIngredients = this.data.consumeIngredients
+    const currentAmount = Number(consumeIngredients[index].amount) || 0
+    if (currentAmount > 0) {
+      consumeIngredients[index].amount = Math.max(0, currentAmount - 1)
+      this.setData({ consumeIngredients })
+    }
+  },
+
+  /** 增加食材数量 */
+  increaseQuantity(e: any) {
+    const index = e.currentTarget.dataset.index
+    const consumeIngredients = this.data.consumeIngredients
+    const currentAmount = Number(consumeIngredients[index].amount) || 0
+    consumeIngredients[index].amount = currentAmount + 1
+    this.setData({ consumeIngredients })
+  },
+
+  /** 手动输入数量 */
+  onQuantityInput(e: any) {
+    const index = e.currentTarget.dataset.index
+    const value = parseFloat(e.detail.value) || 0
+    const consumeIngredients = this.data.consumeIngredients
+    consumeIngredients[index].amount = value
+    this.setData({ consumeIngredients })
+  },
+
+  /** 确认清耗 */
+  async confirmConsume() {
+    const { consumeIngredients, name, _id } = this.data
+
+    // 过滤掉数量为0的食材
+    const validIngredients = consumeIngredients.filter((ing: any) => ing.amount > 0)
+
+    if (validIngredients.length === 0) {
+      wx.showToast({ title: '请至少选择一个食材', icon: 'none' })
+      return
+    }
+
+    wx.showLoading({ title: '清耗中...' })
 
     try {
-      await wx.cloud.callFunction({
+      const res = await wx.cloud.callFunction({
         name: 'consumeIngredients',
-        data: { recipeId: this.data._id },
+        data: {
+          recipeId: _id,
+          customIngredients: validIngredients,
+        },
       })
 
-      wx.showToast({ title: '🎉 太棒了！食材已扣减', icon: 'success', duration: 2000 })
-      
-      setTimeout(() => wx.navigateBack(), 1500)
-    } catch (e) {
+      const result = res.result as any
+
+      if (result?.success) {
+        wx.showToast({ title: '🎉 食材已清耗', icon: 'success', duration: 2000 })
+        this.setData({ showConsumeModal: false })
+        
+        setTimeout(() => wx.navigateBack(), 1500)
+      } else {
+        throw new Error(result?.errMsg || '清耗失败')
+      }
+    } catch (e: any) {
       console.error('清耗失败:', e)
-      // 本地模拟
-      wx.showToast({ title: '🎉 记录完成！', icon: 'success', duration: 2000 })
+      wx.showToast({ title: e.message || '清耗失败', icon: 'none' })
     } finally {
       wx.hideLoading()
     }

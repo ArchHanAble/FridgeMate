@@ -119,6 +119,14 @@ Page({
 
     // 新增 - AI 处理建议
     aiAdvice: '',
+
+    // 新增 - 调整库存弹窗
+    showStockModal: false,
+    adjustMode: 'quick', // 'quick' 或 'precise'
+    deltaValue: 0,
+    directValue: '',
+    previewQuantity: -1,
+    stepSize: 1,
   },
 
   onLoad(options) {
@@ -266,39 +274,132 @@ Page({
     })
   },
 
-  /** 标记已处理（将状态改为 consumed） */
-  markHandled() {
+  /** 显示调整库存弹窗 */
+  showAdjustStock() {
     if (this.data._id.startsWith('demo_')) {
       wx.showToast({ title: '演示数据无法操作', icon: 'none' })
       return
     }
-    wx.showModal({
-      title: '标记已处理',
-      content: `确认将「${this.data.name}」标记为已处理吗？`,
-      confirmColor: '#FF6A88',
-      success: (res) => {
-        if (res.confirm) {
-          this._markAsConsumed()
-        }
-      },
+    this.setData({
+      showStockModal: true,
+      adjustMode: 'quick',
+      deltaValue: 0,
+      directValue: '',
+      previewQuantity: this.data.quantity,
+      stepSize: 1,
     })
   },
 
-  async _markAsConsumed() {
+  /** 隐藏调整库存弹窗 */
+  hideAdjustStock() {
+    this.setData({ showStockModal: false })
+  },
+
+  /** 阻止事件冒泡 */
+  preventBubble() {
+    // 阻止点击弹窗内容时关闭弹窗
+  },
+
+  /** 切换调整模式 */
+  switchAdjustMode(e: any) {
+    const mode = e.currentTarget.dataset.mode
+    this.setData({
+      adjustMode: mode,
+      previewQuantity: this.data.quantity,
+    })
+  },
+
+  /** 设置步长 */
+  setStepSize(e: any) {
+    const step = parseInt(e.currentTarget.dataset.step) || 1
+    this.setData({ stepSize: step })
+  },
+
+  /** 快速调整：加减按钮 */
+  adjustDelta(e: any) {
+    const value = parseInt(e.currentTarget.dataset.value) || 0
+    const newQty = Math.max(0, this.data.previewQuantity + value)
+    this.setData({ previewQuantity: newQty })
+  },
+
+  /** 精确输入 */
+  onDirectInput(e: any) {
+    const value = e.detail.value
+    const qty = parseFloat(value) || 0
+    this.setData({
+      directValue: value,
+      previewQuantity: qty,
+    })
+  },
+
+  /** 数字键盘输入 */
+  padInput(e: any) {
+    const num = e.currentTarget.dataset.num
+    const current = this.data.directValue || ''
+    const newVal = current + num
+    const qty = parseFloat(newVal) || 0
+    this.setData({
+      directValue: newVal,
+      previewQuantity: qty,
+    })
+  },
+
+  /** 数字键盘删除 */
+  padDelete() {
+    const current = this.data.directValue || ''
+    const newVal = current.slice(0, -1)
+    const qty = parseFloat(newVal) || 0
+    this.setData({
+      directValue: newVal,
+      previewQuantity: newVal ? qty : this.data.quantity,
+    })
+  },
+
+  /** 确认调整库存 */
+  async confirmAdjustStock() {
+    const { previewQuantity, quantity, _id } = this.data
+
+    if (previewQuantity < 0) {
+      wx.showToast({ title: '库存不能为负数', icon: 'none' })
+      return
+    }
+
+    if (previewQuantity === quantity) {
+      wx.showToast({ title: '库存未变更', icon: 'none' })
+      return
+    }
+
+    wx.showLoading({ title: '更新中...' })
+
     try {
       const res = await wx.cloud.callFunction({
         name: 'manageFoodItem',
-        data: { action: 'consume', itemId: this.data._id }
+        data: {
+          action: 'update',
+          itemId: _id,
+          updates: { quantity: previewQuantity }
+        }
       })
       const result = res.result as { success: boolean; errMsg: string }
+      
       if (!result.success) {
         throw new Error(result.errMsg)
       }
-      wx.showToast({ title: '已标记处理', icon: 'success' })
-      setTimeout(() => wx.navigateBack(), 1200)
+
+      // 更新页面数据
+      const updatedData = { ...this.data, quantity: previewQuantity, _id }
+      this._renderItem(updatedData)
+      
+      this.setData({
+        showStockModal: false,
+      })
+
+      wx.showToast({ title: '库存已更新', icon: 'success' })
     } catch (e: any) {
-      console.error('标记失败:', e)
+      console.error('调整库存失败:', e)
       wx.showToast({ title: e.message || '操作失败', icon: 'none' })
+    } finally {
+      wx.hideLoading()
     }
   },
 
