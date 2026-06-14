@@ -311,7 +311,7 @@
 
 
   <!-- === 统计概览（成就感数据）=== -->
-  <view class="card setting-section">
+  <!-- <view class="card setting-section">
     <view class="section-header">
       <text class="section-title">📊 我的成就</text>
       <text class="section-desc">看看你减少了多少浪费</text>
@@ -333,12 +333,12 @@
         <text class="stat-num stat-num--green">{{stats.wastePrevented || 0}}</text>
         <text class="stat-text">减少浪费</text>
       </view>
-    </view>
+    </view> -->
     <!-- 环保小贴士 -->
-    <view class="eco-tip" wx:if="{{stats.wastePrevented > 0}}">
+    <!-- <view class="eco-tip" wx:if="{{stats.wastePrevented > 0}}">
       <text>🌱 你已经减少 {{stats.wastePrevented}} 次食物浪费，相当于减少约 {{stats.co2Saved || (stats.wastePrevented * 2)}}kg 碳排放！继续加油 💪</text>
-    </view>
-  </view>
+    </view> -->
+  <!-- </view> -->
 
   <!-- === 其他功能入口 === -->
   <view class="card menu-list">
@@ -359,25 +359,25 @@
     </view>
 
     <!-- 登录/退出区域（仅已登录显示） -->
-    <view wx:if="{{isLoggedIn}}" class="menu-divider"></view>
+    <!-- <view wx:if="{{isLoggedIn}}" class="menu-divider"></view> -->
 
     <!-- 切换账号 -->
-    <view wx:if="{{isLoggedIn}}" class="menu-item menu-item--warn" bindtap="switchAccount">
+    <!-- <view wx:if="{{isLoggedIn}}" class="menu-item menu-item--warn" bindtap="switchAccount">
       <text class="menu-icon">🔄</text>
       <text class="menu-label menu-label--secondary">切换账号</text>
       <text class="menu-arrow">›</text>
-    </view>
+    </view> -->
 
     <!-- 退出登录 -->
-    <view wx:if="{{isLoggedIn}}" class="menu-item menu-item--danger" bindtap="logout">
+    <!-- <view wx:if="{{isLoggedIn}}" class="menu-item menu-item--danger" bindtap="logout">
       <text class="menu-icon">🚪</text>
       <text class="menu-label menu-label--danger">退出登录</text>
       <text class="menu-arrow">›</text>
-    </view>
+    </view> -->
   </view>
 
   <!-- 版本号 -->
-  <text class="version-text">v2.2.0 · Made with ❤️ · 云端已连接</text>
+  <text class="version-text">Made with ❤️ by Han</text>
 
   <!-- ====== 邀请弹窗（半屏 Modal — 暖绿主题设计稿 v2）====== -->
   <view class="invite-mask" wx:if="{{showInviteModal}}" bindtap="closeInviteModal">

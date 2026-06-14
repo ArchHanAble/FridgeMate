@@ -18,9 +18,30 @@ exports.main = async (event, context) => {
   console.log(`📜 查询做菜历史, openid=${openid}`)
 
   try {
+    // === 0. 查找共享冰箱组，获取同组所有成员 openid ===
+    let queryOpenids = [openid]
+    try {
+      const fridgeRes = await db.collection('shared_fridges')
+        .where({
+          $or: [
+            { ownerOpenId: openid },
+            { 'members.openId': openid }
+          ]
+        })
+        .limit(1)
+        .get()
+      if (fridgeRes.data && fridgeRes.data.length > 0) {
+        const fridge = fridgeRes.data[0]
+        queryOpenids = (fridge.members || []).map(m => m.openId)
+        console.log(`👥 [getCookHistory] 共享组做菜历史查询, 成员数=${queryOpenids.length}`)
+      }
+    } catch (e) {
+      console.warn('共享组查询失败，仅查询个人做菜历史:', e.message)
+    }
+
     // === 1. 获取所有做菜记录（按时间倒序，最近50条）===
     const res = await db.collection('cooking_history')
-      .where({ _openid: openid })
+      .where({ _openid: _.in(queryOpenids) })
       .orderBy('cookedAt', 'desc')
       .limit(50)
       .get()
@@ -65,8 +86,8 @@ exports.main = async (event, context) => {
     let favoriteDish = '--'
     let maxFreq = 0
     for (const [name, count] of Object.entries(recipeFreq)) {
-      if ((count as number) > maxFreq) {
-        maxFreq = count as number
+      if (count > maxFreq) {
+        maxFreq = count
         favoriteDish = name
       }
     }
@@ -106,18 +127,73 @@ exports.main = async (event, context) => {
       const y = cookedDate.getFullYear()
       const m = String(cookedDate.getMonth() + 1).padStart(2, '0')
       const d = String(cookedDate.getDate()).padStart(2, '0')
-      const h = String(cookedDate.getHours()).padStart(2, '0')
-      const min = String(cookedDate.getMinutes()).padStart(2, '0')
+
+      // 处理 consumedIngredients 字段，兼容旧数据格式（string[]）和新数据格式（{name, amount}[]）
+      let consumedIngredients = []
+      
+      // 1. 先处理 consumedIngredients（已消耗的食材）
+      if (Array.isArray(r.consumedIngredients)) {
+        consumedIngredients = r.consumedIngredients.map(item => {
+          // 旧格式：item 是 string (食材名称)
+          if (typeof item === 'string') {
+            return { name: item, amount: 0, unit: '' }
+          }
+          // 新格式：item 是 object {name, amount, unit}
+          return {
+            name: item.name || '',
+            amount: item.amount || 0,
+            unit: item.unit || ''
+          }
+        }).filter(item => item.name) // 过滤掉名称为空的项
+      }
+      
+      // 2. 合并 missingInFridge（冰箱中没有的食材）
+      if (Array.isArray(r.missingInFridge)) {
+        const existingNames = new Set(consumedIngredients.map(item => item.name))
+        
+        r.missingInFridge.forEach(item => {
+          let name = ''
+          let amount = 0
+          let unit = ''
+          
+          // 兼容不同的数据格式
+          if (typeof item === 'string') {
+            name = item
+          } else if (item && typeof item === 'object') {
+            name = item.name || ''
+            amount = item.amount || 0
+            unit = item.unit || ''
+          }
+          
+          if (!name) return // 跳过名称为空的项
+          
+          // 检查是否已存在同名的食材
+          if (existingNames.has(name)) {
+            // 已存在，跳过（保留原有数据）
+            console.log(`⚠️ 食材 "${name}" 已存在于 consumedIngredients 中，跳过 missingInFridge 中的重复项`)
+          } else {
+            // 不存在，添加进去
+            consumedIngredients.push({
+              name: name,
+              amount: amount,
+              unit: unit
+            })
+            existingNames.add(name) // 更新集合，避免后续重复
+          }
+        })
+      }
 
       return {
         _id: r._id || `history_${idx}`,
         recipeId: r.recipeId || '',
-        name: r.recipeName || '未知菜品',
-        image: imageMap[r.recipeId] || '',   // 有图就展示，无图为空
+        recipeName: r.recipeName || '',  // 菜谱名称（用于搜索）
+        name: r.recipeName || '未知菜品',  // 菜名（用于显示）
+        // 优先使用记录中保存的自定义图片（用户上传的图片），如果没有才使用菜谱图片
+        image: r.image || imageMap[r.recipeId] || '',
+        experience: r.experience || '',  // 做菜心得分享
         cookedAt: new Date(r.cookedAt).getTime(),
         dateStr: `${y}-${m}-${d}`,
-        timeStr: `${h}:${min}`,
-        ingredients: r.consumedIngredients || [],
+        consumedIngredients: consumedIngredients, // 消耗的食材列表（含名称和数量）
       }
     })
 

@@ -145,23 +145,23 @@
       class="action-cook {{canCook ? 'action-cook--ready' : ''}}"
       catchtap="showConsumeModal"
     >
-      <text>{{canCook ? '✨ 一键清耗食材' : '⚡ 做好啦'}}</text>
+      <text>⚡ 做好啦</text>
     </button>
   </view>
 
-  <!-- 清耗食材弹窗 -->
+  <!-- 消耗食材弹窗 -->
   <view class="consume-modal-mask" wx:if="{{showConsumeModal}}" bindtap="hideConsumeModal">
     <view class="consume-modal" catchtap="preventBubble">
       <view class="consume-modal-header">
         <view class="consume-modal-title-wrap">
           <text class="consume-modal-icon">📦</text>
-          <text class="consume-modal-title">清耗食材</text>
+          <text class="consume-modal-title">做菜记录</text>
         </view>
         <view class="consume-modal-close" bindtap="hideConsumeModal">✕</view>
       </view>
       
-      <view class="consume-modal-body">
-        <view class="consume-modal-desc">请确认要清耗的食材数量，可手动调整</view>
+      <scroll-view scroll-y class="consume-modal-body">
+        <view class="consume-modal-desc">请确认要消耗的食材数量，可手动调整</view>
         
         <view class="consume-ingredient-list">
           <view class="consume-ingredient-item" wx:for="{{consumeIngredients}}" wx:key="name">
@@ -186,11 +186,39 @@
             </view>
           </view>
         </view>
-      </view>
+
+        <!-- 美食照片上传 -->
+        <view class="consume-section">
+          <view class="consume-section-title">美食照片</view>
+          <view class="consume-upload-area" wx:if="{{!foodPhoto}}" bindtap="onChooseFoodPhoto">
+            <text class="upload-icon">📷</text>
+            <text class="upload-text">上传美食照片</text>
+            <text class="upload-hint">非必填，留空则显示菜谱照片</text>
+          </view>
+          <view class="consume-image-preview" wx:if="{{foodPhoto}}">
+            <image class="preview-img" src="{{foodPhoto}}" mode="aspectFill" />
+            <view class="remove-img" bindtap="removeFoodPhoto">✕</view>
+          </view>
+        </view>
+
+        <!-- 心得体会 -->
+        <view class="consume-section">
+          <view class="consume-section-title">心得体会</view>
+          <textarea
+            class="consume-textarea"
+            placeholder="分享你的做菜心得吧..."
+            placeholder-class="consume-placeholder"
+            value="{{experience}}"
+            bindinput="onExperienceInput"
+            maxlength="500"
+            auto-height
+          />
+        </view>
+      </scroll-view>
       
       <view class="consume-modal-footer">
         <button class="consume-btn-cancel" bindtap="hideConsumeModal">取消</button>
-        <button class="consume-btn-confirm" bindtap="confirmConsume">确认清耗</button>
+        <button class="consume-btn-confirm" bindtap="confirmConsume">确认</button>
       </view>
     </view>
   </view>

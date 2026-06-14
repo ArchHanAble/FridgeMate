@@ -1016,7 +1016,7 @@ Page({
   goFeedback() {
     wx.showModal({
       title: '意见反馈',
-      content: '有任何问题或建议，欢迎通过小程序客服联系我们～',
+      content: '有任何问题或建议，欢迎添加ABLE78963联系我～',
       showCancel: false,
       confirmText: '好的',
     })

@@ -454,3 +454,114 @@
   transform: scale(0.98);
   box-shadow: 0 4rpx 16rpx rgba(255, 106, 136, 0.25);
 }
+
+/* === 美食照片上传 === */
+.consume-section {
+  margin-top: 32rpx;
+  padding-top: 28rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.consume-section-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16rpx;
+}
+
+.consume-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 200rpx;
+  background: #fafafa;
+  border: 2rpx dashed #d9d9d9;
+  border-radius: 20rpx;
+  transition: all 0.2s ease;
+}
+
+.consume-upload-area:active {
+  background: #f5f5f5;
+  border-color: #ff6a88;
+}
+
+.upload-icon {
+  font-size: 56rpx;
+  margin-bottom: 8rpx;
+}
+
+.upload-text {
+  font-size: 26rpx;
+  color: #666;
+  font-weight: 500;
+}
+
+.upload-hint {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 8rpx;
+}
+
+.consume-image-preview {
+  position: relative;
+  width: 100%;
+  height: 300rpx;
+  border-radius: 20rpx;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+.consume-image-preview .preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.consume-image-preview .remove-img {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 24rpx;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.consume-image-preview .remove-img:active {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(0.9);
+}
+
+/* === 心得体会 === */
+.consume-textarea {
+  width: 100%;
+  min-height: 160rpx;
+  padding: 20rpx;
+  background: #fafafa;
+  border: 2rpx solid #e8e8e8;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.6;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.consume-textarea:focus {
+  border-color: #ff6a88;
+  background: #fff;
+  box-shadow: 0 0 0 4rpx rgba(255, 106, 136, 0.1);
+}
+
+.consume-placeholder {
+  color: #bfbfbf;
+  font-size: 28rpx;
+}

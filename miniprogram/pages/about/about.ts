@@ -1,6 +1,6 @@
 // pages/about/about.ts
 
-const APP_VERSION = '2.0.0'
+const APP_VERSION = '1.0.0'
 
 Page({
   data: {
@@ -38,10 +38,10 @@ Page({
   /** 检查更新状态（模拟） */
   _checkUpdateStatus() {
     // 实际可调用 wx.getUpdateManager 检测小程序更新
-    this.setData({
-      updateStatus: 'latest',
-      updateText: '已是最新版本',
-    })
+    // this.setData({
+    //   updateStatus: 'latest',
+    //   updateText: '已是最新版本',
+    // })
   },
 
   /* === 菜单操作 === */
@@ -49,7 +49,7 @@ Page({
   goPrivacy() {
     wx.showModal({
       title: '隐私政策',
-      content: '冰箱管家非常重视您的隐私保护。\n\n我们仅收集必要的用户信息用于提供冰箱管理服务，包括：\n- 微信昵称和头像（用于身份展示）\n- 冰箱食材数据（存储在您的云空间）\n\n我们不会将您的数据用于任何商业目的或分享给第三方。',
+      content: '冰箱都有啥非常重视您的隐私保护。\n\n我们仅收集必要的用户信息用于提供冰箱管理服务，包括：\n- 微信昵称和头像（用于身份展示）\n- 冰箱食材数据（存储在您的云空间）\n\n我们不会将您的数据用于任何商业目的或分享给第三方。',
       confirmText: '我知道了',
       showCancel: false,
     })
@@ -58,7 +58,7 @@ Page({
   goAgreement() {
     wx.showModal({
       title: '用户协议',
-      content: '欢迎使用冰箱管家！\n\n使用本小程序即表示您同意以下条款：\n1. 本应用仅供个人及家庭使用\n2. 用户应对自行添加的数据真实性负责\n3. 我们保留对服务进行必要调整的权利\n4. 如有争议，以最新版协议为准',
+      content: '欢迎使用冰箱都有啥！\n\n使用本小程序即表示您同意以下条款：\n1. 本应用仅供个人及家庭使用\n2. 用户应对自行添加的数据真实性负责\n3. 我们保留对服务进行必要调整的权利\n4. 如有争议，以最新版协议为准',
       confirmText: '我知道了',
       showCancel: false,
     })

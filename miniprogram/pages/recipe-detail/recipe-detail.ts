@@ -35,6 +35,11 @@ Page({
     // 清耗食材弹窗
     showConsumeModal: false,
     consumeIngredients: [] as any[],
+    
+    // 美食照片和心得体会
+    foodPhoto: '',           // 美食照片本地路径
+    base64ImageData: '',     // Base64图片数据
+    experience: '',          // 心得体会
   },
 
   onLoad(options) {
@@ -315,6 +320,9 @@ Page({
     this.setData({
       showConsumeModal: true,
       consumeIngredients,
+      foodPhoto: '',           // 重置美食照片
+      base64ImageData: '',     // 重置Base64数据
+      experience: '',          // 重置心得体会
     })
   },
 
@@ -326,6 +334,87 @@ Page({
   /** 阻止事件冒泡 */
   preventBubble() {
     // 空函数，用于阻止事件冒泡
+  },
+
+  /** 选择美食照片 */
+  async onChooseFoodPhoto() {
+    try {
+      const chooseRes = await wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+      })
+      const tempPath = chooseRes.tempFiles?.[0]?.tempFilePath
+      if (!tempPath) return
+
+      wx.showLoading({ title: '处理中...' })
+
+      // 图片压缩
+      let finalPath = tempPath
+      try {
+        const compressRes = await wx.compressImage({
+          src: tempPath,
+          quality: 50,
+          compressedWidth: 600,
+          compressedHeight: 600,
+        })
+        finalPath = compressRes.tempFilePath
+      } catch (compressErr: any) {
+        console.warn('[onChooseFoodPhoto] 压缩失败，使用原图:', compressErr)
+      }
+
+      // 读取本地图片文件转为 base64
+      const fs = wx.getFileSystemManager()
+      let base64Data = ''
+      try {
+        const fileData = fs.readFileSync(finalPath, 'base64')
+        base64Data = typeof fileData === 'string' ? fileData : ''
+      } catch (readErr: any) {
+        console.warn('readFileSync 失败，尝试异步方式:', readErr)
+        base64Data = await new Promise<string>((resolve, reject) => {
+          fs.readFile({
+            filePath: finalPath,
+            encoding: 'base64',
+            success(fileRes: any) { resolve(String(fileRes.data)) },
+            fail(err: any) { reject(err) }
+          })
+        })
+      }
+
+      // 检查 base64 大小
+      const estimatedSizeKB = Math.round(base64Data.length * 3 / 4 / 1024)
+      console.log(`[onChooseFoodPhoto] Base64 预估大小: ${estimatedSizeKB} KB`)
+      if (estimatedSizeKB > 900) {
+        console.warn(`[onChooseFoodPhoto] ⚠️ Base64 数据较大(${estimatedSizeKB}KB)`)
+      }
+
+      this.setData({
+        foodPhoto: tempPath,           // 本地路径用于预览
+        base64ImageData: base64Data,   // Base64 数据用于提交
+      })
+
+      wx.hideLoading()
+    } catch (e: any) {
+      wx.hideLoading()
+      if (e.errMsg && !String(e.errMsg).includes('cancel')) {
+        console.error('美食照片处理失败:', e)
+        wx.showToast({ title: e.message || '图片处理失败', icon: 'none' })
+      }
+    }
+  },
+
+  /** 删除美食照片 */
+  removeFoodPhoto() {
+    this.setData({ 
+      foodPhoto: '',
+      base64ImageData: ''  
+    })
+  },
+
+  /** 输入心得体会 */
+  onExperienceInput(e: WechatMiniprogram.Input.InputEvent) {
+    this.setData({ experience: e.detail.value })
   },
 
   /** 减少食材数量 */
@@ -359,7 +448,7 @@ Page({
 
   /** 确认清耗 */
   async confirmConsume() {
-    const { consumeIngredients, name, _id } = this.data
+    const { consumeIngredients, name, _id, base64ImageData, experience, image } = this.data
 
     // 过滤掉数量为0的食材
     const validIngredients = consumeIngredients.filter((ing: any) => ing.amount > 0)
@@ -372,11 +461,25 @@ Page({
     wx.showLoading({ title: '清耗中...' })
 
     try {
+      // 准备图片数据：优先使用用户上传的美食照片（Base64），如果没有则使用菜谱图片
+      let imageData = ''
+      if (base64ImageData && base64ImageData.trim()) {
+        // Base64 方案：格式化为 data:image/jpeg;base64,xxxxx
+        imageData = `data:image/jpeg;base64,${base64ImageData}`
+        console.log(`[confirmConsume] 使用Base64美食照片，长度: ${imageData.length}`)
+      } else if (image && !image.startsWith('wxfile://') && !image.startsWith('http://tmp/')) {
+        // 如果用户没有上传照片，使用菜谱的图片URL
+        imageData = image
+        console.log(`[confirmConsume] 使用菜谱图片URL: ${imageData}`)
+      }
+
       const res = await wx.cloud.callFunction({
         name: 'consumeIngredients',
         data: {
           recipeId: _id,
           customIngredients: validIngredients,
+          image: imageData,                    // 美食照片（Base64或URL）
+          experience: (experience || '').trim(), // 心得体会
         },
       })
 

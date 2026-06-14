@@ -13,13 +13,13 @@ const _ = db.command
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const { recipeId, customIngredients } = event
+  const { recipeId, customIngredients, image, experience } = event
 
   if (!recipeId) {
     return { success: false, errMsg: '菜谱ID不能为空' }
   }
 
-  console.log(`🍳 开始清耗食材, 菜谱ID: ${recipeId}, 自定义数量: ${customIngredients ? '是' : '否'}`)
+  console.log(`🍳 开始清耗食材, 菜谱ID: ${recipeId}, 自定义数量: ${customIngredients ? '是' : '否'}, 有图片: ${image ? '是' : '否'}, 有心得: ${experience ? '是' : '否'}`)
 
   try {
     // === Step 1: 获取菜谱信息 ===
@@ -83,14 +83,16 @@ exports.main = async (event, context) => {
         if (result) {
           consumed.push({
             name: ing.name,
-            before: result.before,
-            after: result.after,
-            status: result.status,
+            amount: ing.amount,
+            unit: matchedFood.unit
           })
-          console.log(`  ✓ 扣减 ${matchedFood.name}: ${result.before} → ${result.after}`)
         }
       } else {
-        notFound.push(ing.name)
+        notFound.push({
+          name: ing.name,
+          amount: ing.amount,
+          unit: matchedFood.unit
+        })
         console.log(`  ✗ 冰箱中没有找到: ${ing.name}`)
       }
     }
@@ -102,9 +104,13 @@ exports.main = async (event, context) => {
           _openid: openid,
           recipeId,
           recipeName: recipe.name,
-          consumedIngredients: consumed.map(c => c.name),
-          missingInFridge: notFound,
+          image: image || '',           // 美食照片（用户上传或菜谱封面）
+          experience: experience || '',  // 做菜心得分享
+          consumedIngredients: consumed.map(c => ({ name: c.name, amount: c.amount, unit: '' })),
+          missingInFridge: notFound.map(nf => ({ name: nf.name, amount: nf.amount, unit: '' })),
+          source: 'consume',           // 标记来源：清耗食材
           cookedAt: new Date(),
+          createdAt: new Date(),
         }
       })
     } catch (historyErr) {

@@ -5,8 +5,8 @@
   <view class="card about-card">
     <view class="about-header">
       <image class="about-icon" src="/images/tab/fridge-active.png" mode="aspectFit" />
-      <text class="about-name">冰箱管家</text>
-      <text class="about-version">v2.0.0</text>
+      <text class="about-name">冰箱都有啥</text>
+      <text class="about-version">v1.0.0</text>
     </view>
 
     <!-- 功能介绍 -->
@@ -50,7 +50,7 @@
 
   <!-- === 底部版权 === -->
   <view class="about-footer">
-    <text class="footer-love">Made with ❤️ by 新时代霹雳娇羊</text>
+    <text class="footer-love">Made with ❤️ by Han</text>
     <text class="footer-copy">© 2026  ·  联系我们</text>
   </view>
 

@@ -1,72 +1,131 @@
 <!-- pages/cook-history/cook-history.wxml -->
 <view class="page-container cook-history-page">
 
-  <!-- ====== 顶部统计区（3个数据卡片并排）====== -->
-  <view class="stats-row">
-    <view class="stat-card stat-card--primary">
-      <text class="stat-card__num">{{stats.monthCount}}</text>
-      <text class="stat-card__label">本月做菜</text>
+  <!-- ====== 顶部操作栏 ====== -->
+  <view class="top-bar">
+    <!-- 搜索框 -->
+    <view class="search-box" wx:if="{{showSearch}}">
+      <text class="search-icon-text">🔍</text>
+      <input
+        class="search-input"
+        placeholder="搜索菜谱名称"
+        placeholder-class="search-placeholder"
+        value="{{searchKeyword}}"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+        focus="{{showSearch}}"
+      />
+      <view class="search-close" bindtap="toggleSearch" wx:if="{{showSearch}}">
+        <text class="icon-close">✕</text>
+      </view>
     </view>
-    <view class="stat-card stat-card--money">
-      <text class="stat-card__num stat-card__num--money">¥ {{stats.totalSaved}}</text>
-      <text class="stat-card__label">累计节省</text>
-    </view>
-    <view class="stat-card stat-card--favorite">
-      <text class="stat-card__name">{{stats.favoriteDish}}</text>
-      <text class="stat-card__label">最常做</text>
+
+    <!-- 搜索/添加按钮 -->
+    <view class="top-actions" wx:if="{{!showSearch}}">
+      <view class="action-btn search-toggle" bindtap="toggleSearch">
+        <text class="action-icon">🔍</text>
+        <text class="action-text">搜索</text>
+      </view>
+      <view class="action-btn add-btn" bindtap="showAddForm">
+        <text class="action-icon">＋</text>
+        <text class="action-text">添加</text>
+      </view>
     </view>
   </view>
 
-  <!-- ====== 月份筛选 Tab ====== -->
-  <scroll-view scroll-x class="month-tabs" enhanced show-scrollbar="{{false}}">
-    <view class="month-tabs__inner">
-      <view
-        wx:for="{{tabs}}"
-        wx:key="value"
-        class="month-tab {{currentTab === item.value ? 'month-tab--active' : ''}}"
-        data-value="{{item.value}}"
-        bindtap="onTabChange"
-      >
-        <text>{{item.label}}</text>
+  <!-- ====== 统计表格 ====== -->
+  <view class="stats-section" wx:if="{{!loading && !isEmpty}}">
+    <view class="stats-table">
+      <view class="stats-row">
+        <view class="stats-cell stats-cell--label">本月做菜</view>
+        <view class="stats-cell stats-cell--value">{{stats.monthCount}} 次</view>
+      </view>
+      <view class="stats-row">
+        <view class="stats-cell stats-cell--label">做菜频率</view>
+        <view class="stats-cell stats-cell--value">每周 {{stats.weekFrequencyText}} 次</view>
+      </view>
+      <view class="stats-row">
+        <view class="stats-cell stats-cell--label">最常做</view>
+        <view class="stats-cell stats-cell--value stats-cell--dish">{{stats.favoriteDish}}</view>
       </view>
     </view>
-  </scroll-view>
+  </view>
 
   <!-- ====== 加载状态 ====== -->
-  <view wx:if="{{loading}}" class="cook-loading">
+  <view wx:if="{{loading}}" class="loading-state">
     <view class="loading-spinner"></view>
     <text>加载中...</text>
   </view>
 
-  <!-- ====== 做菜记录列表（按时间倒序）====== -->
-  <view class="history-list" wx:if="{{!loading && !isEmpty}}">
+  <!-- ====== 时间轴列表 ====== -->
+  <view class="timeline" wx:if="{{!loading && !isEmpty}}">
     <block wx:for="{{filteredRecords}}" wx:key="_id">
-      <view class="history-item">
-        <!-- 左：菜品图片 60x60 圆角 -->
-        <image
-          class="history-item__img"
-          src="{{item.image}}"
-          mode="aspectFill"
-        />
-        
-        <!-- 中：信息区 -->
-        <view class="history-item__info">
-          <!-- 菜名 + 时间 -->
-          <view class="history-item__header">
-            <text class="history-item__name">{{item.name}}</text>
-            <text class="history-item__time">{{item.dateStr}}  {{item.timeStr}}</text>
-          </view>
-
-          <!-- 消耗的冰箱食材 -->
-          <view class="history-item__ingredients" wx:if="{{item.ingredients.length > 0}}">
-            <text class="history-item__ing-label">用了：</text>
-            <text class="history-item__ing-text">{{item.ingredients.join(' · ')}}</text>
-          </view>
+      <view class="timeline-item">
+        <!-- 时间轴线 -->
+        <view class="timeline-dot-wrapper">
+          <view class="timeline-dot"></view>
+          <view class="timeline-line" wx:if="{{index < filteredRecords.length - 1}}"></view>
         </view>
 
-        <!-- 右："再做一次"按钮 -->
-        <view class="history-item__action" bindtap="goRecipeDetail" data-id="{{item.recipeId}}">
-          <text class="history-item__btn">再做一次</text>
+        <!-- 内容卡片 -->
+        <view class="timeline-card">
+          <!-- 上部分：图片 + 信息（左右布局） -->
+          <view class="timeline-card-top">
+            <!-- 左侧：菜品图片 -->
+            <image
+              wx:if="{{item.image}}"
+              class="timeline-image"
+              src="{{item.image}}"
+              mode="aspectFill"
+              catchtap="previewImage"
+              data-url="{{item.image}}"
+            />
+            <!-- 占位符（无图片时） -->
+            <view wx:else class="timeline-image-placeholder">
+              <text class="placeholder-icon">🍳</text>
+            </view>
+
+            <!-- 右侧：信息区域 -->
+            <view class="timeline-info">
+              <!-- 日期标签 -->
+              <view class="timeline-date">{{item.dateStr}}</view>
+
+              <!-- 菜谱名称（点击跳转详情） -->
+              <view class="timeline-name" bindtap="goRecipeDetail" data-id="{{item.recipeId}}">{{item.name}}</view>
+
+              <!-- 消耗食材信息 -->
+              <view class="timeline-ingredients" wx:if="{{item.consumedIngredients && item.consumedIngredients.length > 0}}">
+                <view class="ingredients-header" catchtap="toggleIngredients" data-id="{{item._id}}">
+                  <view class="ingredients-summary">
+                    <text class="ingredients-icon">🥬</text>
+                    <text class="ingredients-count">消耗 {{item.consumedIngredients.length}} 种食材</text>
+                  </view>
+                  <text class="ingredients-toggle">{{item.ingredientsExpanded ? '收起' : '展开'}}</text>
+                </view>
+                <!-- 食材详情列表 -->
+                <view class="ingredients-detail" wx:if="{{item.ingredientsExpanded}}">
+                  <view class="ingredient-item" wx:for="{{item.consumedIngredients}}" wx:for-item="ing" wx:key="name">
+                    <text class="ingredient-name">{{ing.name}}</text>
+                    <text class="ingredient-amount" wx:if="{{ing.amount > 0}}">{{ing.amount}}{{ing.unit || '个'}}</text>
+                    <!-- <text class="ingredient-amount ingredient-amount--unknown" wx:else>适量</text> -->
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 下部分：做菜心得（横跨整个卡片宽度） -->
+          <view class="timeline-experience" wx:if="{{item.experience}}">
+            <!-- <view class="experience-header"> -->
+              <!-- <text class="experience-label">💬 做菜心得</text> -->
+            <!-- </view> -->
+            <text class="experience-text {{!item.experienceExpanded ? 'experience-text--collapsed' : ''}}">{{item.experience}}</text>
+            <!-- 展开/收起按钮 -->
+            <view class="experience-toggle" catchtap="toggleExperience" data-id="{{item._id}}" wx:if="{{item.experience.length > 50}}">
+              <text class="experience-toggle-text">{{item.experienceExpanded ? '收起' : '展开全文'}}</text>
+              <text class="experience-toggle-icon">{{item.experienceExpanded ? '▲' : '▼'}}</text>
+            </view>
+          </view>
         </view>
       </view>
     </block>
@@ -81,5 +140,130 @@
     action-text="去发现菜谱"
     bind:action="goDiscoverRecipes"
   />
+
+  <!-- ====== 新增记录弹窗 ====== -->
+  <view class="modal-mask" wx:if="{{showAddModal}}" bindtap="closeAddModal">
+    <view class="modal-content" catchtap="preventBubble">
+      <!-- 弹窗标题 -->
+      <view class="modal-header">
+        <text class="modal-title">新增做菜记录</text>
+        <view class="modal-close" bindtap="closeAddModal">✕</view>
+      </view>
+
+      <!-- 表单内容 -->
+      <scroll-view scroll-y class="modal-body">
+        <!-- 做菜图片 -->
+        <view class="form-section">
+          <view class="form-label">做菜图片</view>
+          <view class="image-upload-area" wx:if="{{!addForm.image}}" bindtap="onChooseImage">
+            <text class="upload-icon">📷</text>
+            <text class="upload-text">上传图片</text>
+          </view>
+          <view class="image-preview" wx:if="{{addForm.image}}">
+            <image class="preview-img" src="{{addForm.image}}" mode="aspectFill" />
+            <view class="remove-img" bindtap="removeImage">✕</view>
+          </view>
+          <view class="uploading-tip" wx:if="{{uploading}}">上传中...</view>
+        </view>
+
+        <!-- 做菜日期 -->
+        <view class="form-section">
+          <view class="form-label">做菜日期</view>
+          <picker mode="date" value="{{addForm.cookedAt}}" bindchange="onDateChange">
+            <view class="form-picker">
+              <text class="picker-value">{{addForm.cookedAt || '请选择日期'}}</text>
+              <text class="picker-arrow">▸</text>
+            </view>
+          </picker>
+        </view>
+
+        <!-- 关联菜谱 -->
+        <view class="form-section">
+          <view class="form-label">关联菜谱</view>
+          <view class="form-picker" bindtap="showRecipePicker">
+            <text class="picker-value {{addForm.recipeName ? '' : 'placeholder'}}">
+              {{addForm.recipeName || '选择菜谱（可选）'}}
+            </text>
+            <text class="picker-arrow">▸</text>
+          </view>
+        </view>
+
+        <!-- 菜谱名称（手动输入，当未选择菜谱时） -->
+        <view class="form-section" wx:if="{{!addForm.recipeId}}">
+          <view class="form-label">菜谱名称</view>
+          <input
+            class="form-input"
+            placeholder="请输入菜谱名称"
+            placeholder-class="form-placeholder"
+            value="{{addForm.recipeName}}"
+            bindinput="onRecipeNameInput"
+          />
+        </view>
+
+        <!-- 心得分享 -->
+        <view class="form-section">
+          <view class="form-label">心得分享</view>
+          <textarea
+            class="form-textarea"
+            placeholder="分享你的做菜心得吧..."
+            placeholder-class="form-placeholder"
+            value="{{addForm.experience}}"
+            bindinput="onExperienceInput"
+            maxlength="500"
+            auto-height
+          />
+        </view>
+      </scroll-view>
+
+      <!-- 提交按钮 -->
+      <view class="modal-footer">
+        <view class="btn btn-cancel" bindtap="closeAddModal">取消</view>
+        <view class="btn btn-submit" bindtap="submitAddForm">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 菜谱选择弹窗 ====== -->
+  <view class="modal-mask" wx:if="{{showRecipePicker}}" bindtap="closeRecipePicker">
+    <view class="modal-content modal-content--middle" catchtap="preventBubble">
+      <view class="modal-header">
+        <text class="modal-title">选择菜谱</text>
+        <view class="modal-close" bindtap="closeRecipePicker">✕</view>
+      </view>
+
+      <!-- 搜索框 -->
+      <view class="picker-search">
+        <input
+          class="picker-search-input"
+          placeholder="搜索菜谱"
+          placeholder-class="search-placeholder"
+          value="{{recipeSearchKey}}"
+          bindinput="onRecipeSearchInput"
+        />
+      </view>
+
+      <!-- 菜谱列表 -->
+      <scroll-view scroll-y class="picker-list">
+        <view
+          wx:for="{{recipeOptions}}"
+          wx:key="_id"
+          class="picker-item"
+          bindtap="selectRecipe"
+          data-id="{{item._id}}"
+          data-name="{{item.name}}"
+          data-image="{{item.image}}"
+        >
+          <image class="picker-item-img" src="{{item.image}}" mode="aspectFill" wx:if="{{item.image}}" />
+          <view class="picker-item-img picker-item-img--placeholder" wx:else>
+            <text>🍳</text>
+          </view>
+          <text class="picker-item-name">{{item.name}}</text>
+        </view>
+        <view class="picker-empty" wx:if="{{recipeOptions.length === 0}}">
+          <text>暂无菜谱，去添加吧</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
 
 </view>
