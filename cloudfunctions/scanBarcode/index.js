@@ -73,12 +73,6 @@ exports.main = async (event, context) => {
       return buildSuccessResult(cloudResult, 'tencentcloud')
     }
 
-    // // === Step 3: 内置常见商品兜底表 ===
-    // const fallbackResult = queryBuiltIn(normalizedBarcode)
-    // if (fallbackResult) {
-    //   await cacheToLocal(normalizedBarcode, fallbackResult, 'builtin')
-    //   return buildSuccessResult(fallbackResult, 'builtin')
-    // }
 
     // === 全部未匹配 ===
     return {
@@ -288,37 +282,7 @@ function randomUUID() {
   return uuid
 }
 
-// ==================== 内置常见商品兜底表 ====================
 
-function queryBuiltIn(barcode) {
-  const commonProducts = {
-    '6907992510090': {
-      name: '纯牛奶', brand: '蒙牛', fullName: '蒙牛纯牛奶250ml',
-      shelfLifeDays: 180, category: 'dairy', storageCondition: '2-6°C冷藏',
-    },
-    '6901028089694': {
-      name: '特仑苏有机奶', brand: '蒙牛', fullName: '蒙牛特仑苏有机全脂牛奶250ml',
-      shelfLifeDays: 180, category: 'dairy', storageCondition: '2-6°C冷藏',
-    },
-    '6901209003325': {
-      name: '金典纯牛奶', brand: '伊利', fullName: '伊利金典纯牛奶250ml',
-      shelfLifeDays: 180, category: 'dairy', storageCondition: '2-6°C冷藏',
-    },
-    '6902083800109': {
-      name: '海天生抽酱油', brand: '海天', fullName: '海天上等生抽500ml',
-      shelfLifeDays: 730, category: 'condiment', storageCondition: '阴凉干燥处',
-    },
-    '6900841000240': {
-      name: '老陈醋', brand: '恒顺', fullName: '恒顺香醋500ml',
-      shelfLifeDays: 1095, category: 'condiment', storageCondition: '阴凉干燥处',
-    },
-    '6902538005141': {
-      name: '脉动维生素饮料', brand: '脉动', fullName: '脉动桃子味维生素饮料600ml',
-      shelfLifeDays: 365, category: 'beverage', storageCondition: '常温保存',
-    },
-  }
-  return commonProducts[barcode] || null
-}
 
 // ==================== 分类与保质期推断 ====================
 

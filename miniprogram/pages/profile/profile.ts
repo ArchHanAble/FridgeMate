@@ -2,7 +2,7 @@
 import { SCENARIOS, SCENARIO_LABELS } from '../../utils/constants'
 import { createInviteCode, acceptInvite as apiAcceptInvite } from '../../utils/api'
 
-const EXPIRY_TEMPLATE_ID = wx.getStorageSync('expiry_template_id') || '528n6ipGAklINTuBpISGgaOFqio_KcHDMJ-oRxf7s98'
+const EXPIRY_TEMPLATE_ID = '528n6ipGAklINTuBpISGgQIAE8tP47Va5lqmFi1ouSc'
 
 // === 饮食偏好选项 ===
 const TASTE_OPTIONS = ['咸', '甜', '辣', '清淡', '酸', '鲜', '麻']
@@ -109,6 +109,7 @@ Page({
   onShow() {
     this._syncFromGlobal()
     this._loadAll()
+   
   },
 
   /** 从全局状态同步登录信息 */
@@ -170,22 +171,67 @@ Page({
       this._syncFromGlobal()
     }
 
-    // 从存储加载提醒设置
-    const settings = wx.getStorageSync('user_settings') || {}
-    if (settings.notifyEnabled !== undefined) this.setData({ notifyEnabled: settings.notifyEnabled })
-    if (settings.notifyBeforeDays) {
-      this.setData({
-        notifyBeforeDays: settings.notifyBeforeDays,
-        notifyDaysIndex: this.data.notifyDaysOptions.indexOf(`${settings.notifyBeforeDays}天`),
-      })
-    }
-
-    // 加载饮食偏好
-    this._loadDietPrefs(settings)
+    // 从云端加载用户设置（本地缓存兜底）
+    await this._loadSettingsFromCloud()
 
     // 并行加载统计 + 共享成员
     this._loadStats()
     this._loadSharedMembers()
+
+    this.checkExpiryStatus()
+  },
+
+  /**
+   * 从云端加载用户设置，失败时回退到本地缓存
+   */
+  async _loadSettingsFromCloud() {
+    // 先用本地缓存立即展示，避免白屏等待
+    const localSettings = wx.getStorageSync('user_settings') || {}
+    if (localSettings.notifyEnabled !== undefined) this.setData({ notifyEnabled: localSettings.notifyEnabled })
+    if (localSettings.notifyBeforeDays) {
+      this.setData({
+        notifyBeforeDays: localSettings.notifyBeforeDays,
+        notifyDaysIndex: this.data.notifyDaysOptions.indexOf(`${localSettings.notifyBeforeDays}天`),
+      })
+    }
+    if (localSettings.scenario) this.setData({ scenario: localSettings.scenario })
+    this._loadDietPrefs(localSettings)
+
+    // 再从云端拉取最新数据
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'manageUserSettings',
+        data: { action: 'get' },
+      })
+      const result = res.result as { success: boolean; data?: any; errMsg: string }
+      if (result.success && result.data) {
+        const cloudData = result.data
+
+        // 用云端数据覆盖页面状态
+        if (cloudData.notifyEnabled !== undefined) this.setData({ notifyEnabled: cloudData.notifyEnabled })
+        if (cloudData.notifySubscribed !== undefined) this.setData({ notifySubscribed: cloudData.notifySubscribed })
+        if (cloudData.notifyBeforeDays) {
+          this.setData({
+            notifyBeforeDays: cloudData.notifyBeforeDays,
+            notifyDaysIndex: this.data.notifyDaysOptions.indexOf(`${cloudData.notifyBeforeDays}天`),
+          })
+        }
+        if (cloudData.scenario) {
+          this.setData({ scenario: cloudData.scenario })
+          const app = getApp<IAppOption>()
+          if (app.globalData) app.globalData.scenario = cloudData.scenario
+        }
+        if (cloudData.dietPrefs) this._loadDietPrefs(cloudData)
+
+        // 同步更新本地缓存
+        const merged = { ...localSettings, ...cloudData }
+        wx.setStorageSync('user_settings', merged)
+
+        console.log('✅ 用户设置已从云端加载')
+      }
+    } catch (e) {
+      console.warn('⚠️ 从云端加载设置失败，使用本地缓存:', e)
+    }
   },
 
   /* ====== 头像/昵称编辑（微信新版能力） ====== */
@@ -528,9 +574,7 @@ Page({
     app.setScenario(value)
     this.setData({ scenario: value })
 
-    const settings = wx.getStorageSync('user_settings') || {}
-    settings.scenario = value
-    wx.setStorageSync('user_settings', settings)
+    this._saveNotifySettings({ scenario: value })
 
     wx.showToast({ title: `已切换为${SCENARIO_LABELS[value]}`, icon: 'none' })
   },
@@ -540,73 +584,87 @@ Page({
     const enabled = e.detail.value
 
     if (!enabled) {
-      this.setData({ notifyEnabled: false })
-      this._saveNotifySettings({ notifyEnabled: false })
+      // 关闭：保存意愿并清除授权标记
+      this.setData({ notifyEnabled: false, notifySubscribed: false })
+      this._saveNotifySettings({ notifyEnabled: false, notifySubscribed: false })
       return
     }
 
+    // === 开启 ===
+    // 核心思路：开关 = 用户意愿，授权 = 独立状态。开关打开后不再因授权失败而弹回 OFF。
+    // 授权在本次开关打开时请求一次，后续由 app.onShow 中的 refreshSubscription 静默续期。
+
     if (!EXPIRY_TEMPLATE_ID) {
-      wx.showModal({
-        title: '⚠️ 模板未配置',
-        content: '订阅消息模板ID尚未配置。\n\n请前往小程序管理后台申请「到期提醒」模板，并将templateId填入设置。',
-        confirmText: '我知道了',
-        showCancel: false,
-      })
+      wx.showToast({ title: '模板未配置', icon: 'none' })
       return
     }
+
+    // 先保存用户意愿（开关立即响应，不等待授权结果）
+    this.setData({ notifyEnabled: true })
+    this._saveNotifySettings({ notifyEnabled: true })
 
     wx.showLoading({ title: '请求订阅权限...' })
 
     try {
-      const subRes: any = await new Promise((resolve) => {
+      const subRes: any = await new Promise((resolve, reject) => {
         wx.requestSubscribeMessage({
           tmplIds: [EXPIRY_TEMPLATE_ID],
           success: resolve,
-          fail: resolve,
+          fail: reject,
         })
       })
 
       wx.hideLoading()
 
-      const accepted = subRes[EXPIRY_TEMPLATE_ID] === 'accept'
+      const status = subRes?.[EXPIRY_TEMPLATE_ID]
 
-      if (accepted) {
-        this.setData({ 
-          notifyEnabled: true, 
-          notifySubscribed: true,
-        })
-        this._saveNotifySettings({ notifyEnabled: true, notifySubscribed: true })
+      if (status === 'accept') {
+        // 用户已授权 → 标记已订阅
+        this.setData({ notifySubscribed: true })
+        this._saveNotifySettings({ notifySubscribed: true })
         wx.showToast({ title: '✅ 已开启到期提醒', icon: 'success' })
         this.checkExpiryStatus()
-      } else {
-        this.setData({ notifyEnabled: false })
-        wx.showModal({
-          title: '未授权订阅',
-          content: '你需要授权订阅消息才能收到到期提醒。\n\n可以在微信 → 设置 → 订阅消息中重新开启。',
-          confirmText: '知道了',
-          showCancel: false,
+      } else if (status === 'ban') {
+        // 模板已被禁止（之前勾选了"总是保持以上选择"）
+        wx.showToast({
+          title: '请在微信「设置→订阅消息」中重新开启',
+          icon: 'none',
+          duration: 3000,
         })
+      } else {
+        // reject 或 API 异常 — 开关保持 ON，后续切回小程序时静默重试
+        console.log('⚠️ [订阅] 本次未获授权，开关保持开启，等待下次静默重试')
       }
     } catch (e: any) {
       wx.hideLoading()
-      console.error('订阅失败:', e)
-      wx.showToast({ title: '订阅请求失败', icon: 'none' })
+      console.error('订阅API调用失败:', e)
+      wx.showToast({ title: '订阅请求失败，请稍后重试', icon: 'none' })
     }
   },
 
   _saveNotifySettings(updates: Record<string, any>) {
+    // 1. 立即更新本地缓存（确保离线可用）
     const settings = wx.getStorageSync('user_settings') || {}
     Object.assign(settings, updates)
     wx.setStorageSync('user_settings', settings)
 
+    // 2. 异步写入云数据库
     wx.cloud.callFunction({
-      name: 'sendExpiryNotify',
-      data: { action: 'requestSubscribe' },
-    }).catch(() => {})
+      name: 'manageUserSettings',
+      data: { action: 'update', data: updates },
+    }).then((res: any) => {
+      if (res.result?.success) {
+        console.log('✅ 提醒设置已同步到云端:', updates)
+      } else {
+        console.warn('⚠️ 云端保存设置失败:', res.result?.errMsg)
+      }
+    }).catch((err: any) => {
+      console.error('❌ 云端保存设置异常:', err)
+    })
   },
 
   async checkExpiryStatus() {
-    if (this.data.checkingExpiry) return
+    // if (this.data.checkingExpiry) return
     this.setData({ checkingExpiry: true })
 
     try {
@@ -635,9 +693,7 @@ Page({
       notifyDaysIndex: Number(e.detail.value),
     })
 
-    const settings = wx.getStorageSync('user_settings') || {}
-    settings.notifyBeforeDays = days
-    wx.setStorageSync('user_settings', settings)
+    this._saveNotifySettings({ notifyBeforeDays: days })
   },
 
   /* === 共享操作（真实调用云函数） === */
@@ -985,7 +1041,7 @@ Page({
     this.setData({ isEditingDiet: true, hasUnsavedDietChanges: false })
   },
 
-  /** 保存饮食偏好到本地存储 + 同步全局 + 退出编辑模式 */
+  /** 保存饮食偏好到本地存储 + 云端 + 同步全局 + 退出编辑模式 */
   saveDietPrefs() {
     const { dietPrefs } = this.data
 
@@ -1002,6 +1058,18 @@ Page({
     if (app.globalData) {
       app.globalData.dietPrefs = dietPrefs
     }
+
+    // 异步写入云端
+    wx.cloud.callFunction({
+      name: 'manageUserSettings',
+      data: { action: 'update', data: { dietPrefs } },
+    }).then((res: any) => {
+      if (res.result?.success) {
+        console.log('✅ 饮食偏好已同步到云端')
+      }
+    }).catch((err: any) => {
+      console.error('❌ 饮食偏好云端保存失败:', err)
+    })
 
     this.setData({ hasUnsavedDietChanges: false, isEditingDiet: false })
     wx.showToast({ title: '✅ 偏好已保存', icon: 'success' })

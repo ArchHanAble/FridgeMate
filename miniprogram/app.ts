@@ -22,6 +22,63 @@ App({
     this.checkScenario()
   },
 
+  onShow() {
+    // 每次切回小程序时，刷新订阅消息授权（静默，不打扰用户）
+    this.refreshSubscription()
+  },
+
+  /**
+   * 🔔 刷新订阅消息授权（静默）
+   * 用户已开启提醒 + 当前无有效授权 → 请求一次订阅
+   * 一次性订阅用完后，通过用户日常打开小程序自动续期
+   */
+  async refreshSubscription() {
+    // 等待静默登录完成
+    if (!this.globalData.loggedIn) return
+
+    const settings = wx.getStorageSync('user_settings') || {}
+    if (!settings.notifyEnabled) return // 未开启提醒，不打扰
+
+    // 避免频繁请求：距上次请求不足 6 小时的跳过
+    const lastRequest = wx.getStorageSync('_sub_last_request_time') || 0
+    const now = Date.now()
+    if (now - lastRequest < 6 * 60 * 60 * 1000) return
+
+    const EXPIRY_TEMPLATE_ID = wx.getStorageSync('expiry_template_id')
+      || '528n6ipGAklINTuBpISGgeDh9tg-WVA0I501THpXzAI'
+
+    try {
+      const subRes = await new Promise<any>((resolve) => {
+        wx.requestSubscribeMessage({
+          tmplIds: [EXPIRY_TEMPLATE_ID],
+          success: resolve,
+          fail: resolve,
+        })
+      })
+
+      const accepted = subRes[EXPIRY_TEMPLATE_ID] === 'accept'
+      wx.setStorageSync('_sub_last_request_time', now)
+
+      // 更新本地 + 云端授权状态
+      settings.notifySubscribed = accepted
+      wx.setStorageSync('user_settings', settings)
+
+      if (accepted) {
+        console.log('✅ [订阅] 授权已刷新，可推送下一条消息')
+      } else {
+        console.log('⚠️ [订阅] 用户未授权本次请求')
+      }
+
+      // 同步云端
+      wx.cloud.callFunction({
+        name: 'manageUserSettings',
+        data: { action: 'update', data: { notifySubscribed: accepted } },
+      }).catch(() => {})
+    } catch (e) {
+      console.warn('⚠️ [订阅] 刷新授权失败:', e)
+    }
+  },
+
   /** 初始化云开发 */
   initCloud() {
     if (!wx.cloud) {

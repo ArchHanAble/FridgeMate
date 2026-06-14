@@ -107,7 +107,7 @@ export async function recognizeFood(imagePath: string) {
  */
 export async function requestExpirySubscribe() {
   // 模板ID需要在小程序管理后台申请
-  const templateId = wx.getStorageSync('expiry_template_id') || '528n6ipGAklINTuBpISGgaOFqio_KcHDMJ-oRxf7s98'
+  const templateId =  '528n6ipGAklINTuBpISGgeDh9tg-WVA0I501THpXzAI'
   if (!templateId) {
     return { errMsg: '订阅消息模板未配置' } as any
   }

@@ -170,10 +170,10 @@
   <view class="card setting-section">
     <view class="section-header">
       <text class="section-title">⏰ 过期提醒</text>
-      <text class="section-badge" wx:if="{{notifySubscribed}}">已授权</text>
+      <!-- <text class="section-badge" wx:if="{{notifySubscribed}}">已授权</text> -->
     </view>
     
-    <view class="setting-row">
+    <!-- <view class="setting-row">
       <view class="setting-info">
         <text class="setting-label">开启到期推送</text>
         <text class="setting-desc">{{notifySubscribed ? '食材临期时通过微信消息通知你' : '开启后可接收到期微信提醒'}}</text>
@@ -183,9 +183,9 @@
         color="#FF6A88"
         bindchange="onNotifyToggle"
       />
-    </view>
+    </view> -->
 
-    <view class="setting-row" wx:if="{{notifyEnabled}}">
+    <!-- <view class="setting-row" wx:if="{{notifyEnabled}}">
       <view class="setting-info">
         <text class="setting-label">提前提醒天数</text>
         <text class="setting-desc">在过期前几天开始提醒</text>
@@ -198,7 +198,7 @@
       >
         <view class="picker-value">{{notifyBeforeDays}}天</view>
       </picker>
-    </view>
+    </view> -->
 
     <!-- 到期状态预览 -->
     <view class="expiry-preview-card" wx:if="{{expiryCheckResult && !checkingExpiry}}">

@@ -28,21 +28,25 @@ const _ = db.command
  * 3. 选择合适的模板，获取 templateId
  * 4. 将 templateId 填入下方
  */
-const DEFAULT_TEMPLATE_ID = process.env.EXPIRY_TEMPLATE_ID || '528n6ipGAklINTuBpISGgaOFqio_KcHDMJ-oRxf7s98'
+const DEFAULT_TEMPLATE_ID = '528n6ipGAklINTuBpISGgeDh9tg-WVA0I501THpXzAI'
 
 /**
- * 模板字段映射（根据你申请的模板调整）
- * 常用模板格式示例：
- * - thing1: 食材名称
- * - time2: 过期日期  
- * - thing3: 存放位置
- * - phrase4: 状态描述
+ * 模板字段映射（已匹配「保质期到期提醒」模板 #7153）
+ * 
+ * 来源：mp.weixin.qq.com → 订阅消息 → 我的模板 → 保质期到期提醒
+ *   物品名称 → {{thing1.DATA}}
+ *   商品数量 → {{number7.DATA}}
+ *   到期日期 → {{date2.DATA}}
+ *   存放位置 → {{thing4.DATA}}
  */
+// ★ 字段名必须与微信后台模板中的字段完全一致
+// 登录 mp.weixin.qq.com → 订阅消息 → 我的模板 → 点击详情查看字段名
+// 以下字段需要和实际模板匹配，否则微信API会返回 errocde 47003
 const TEMPLATE_FIELDS = {
-  name: 'thing1',       // 食材名称字段
-  date: 'time2',        // 过期日期字段
-  location: 'thing3',   // 存放位置字段
-  status: 'phrase4',    // 状态字段
+  name: 'thing1',         // 物品名称
+  quantity: 'number7',    // 商品数量（与模板字段名一致）
+  expiryDate: 'date2',    // 到期日期（与模板字段名一致）
+  location: 'thing4'    // 存放位置（与模板字段名一致）
 }
 
 // 默认提前几天提醒
@@ -56,22 +60,28 @@ exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
   
+  // 定时触发器事件格式：{ Type: "Timer", TriggerName: "...", Time: "..." }
+  // 注意：微信云开发的定时触发器使用大写 Type，不是小写 type
+  const isTimerTrigger = event.Type === 'Timer' || event.type === 'timer'
+  
   const {
-    action = 'check',          // check(查询) | send(发送) | batchSend(批量发送/定时器)
+    action: rawAction,          // check(查询) | send(发送) | batchSend(批量发送/定时器)
     daysBefore,                 // 提前多少天提醒
     templateId,                 // 自定义模板ID
-    foodIds,                    // 指定检查的食材ID列表
     forceSend,                  // 强制发送（跳过订阅检查）
   } = event
 
-  console.log(`🔔 [到期提醒] action=${action}, openid=${openid?.substring(0,8)}...`)
+  // 定时触发器默认走 batchSend 路由
+  const action = isTimerTrigger ? 'batchSend' : (rawAction || 'check')
 
+  console.log(`🔔 [到期提醒] action=${action}, openid=${openid}..., isTimer=${isTimerTrigger}`)
+  
   switch (action) {
     case 'check':
-      return await checkExpiryFoods(openid, { daysBefore, foodIds })
+      return await checkExpiryFoods(openid, { daysBefore })
     
     case 'send':
-      return await sendExpiryNotification(openid, { daysBefore, templateId, forceSend })
+      return await sendExpiryNotification(openid, { daysBefore, templateId, forceSend, useHttpApi: false })
     
     case 'batchSend':
       return await batchSendNotifications(daysBefore)
@@ -96,21 +106,16 @@ exports.main = async (event, context) => {
  * 检查即将到期的食材
  */
 async function checkExpiryFoods(openid, options = {}) {
-  const { daysBefore = DEFAULT_DAYS_BEFORE, foodIds } = options
+  const { daysBefore = DEFAULT_DAYS_BEFORE } = options
   const now = new Date()
   
   try {
-    let query = {
-      _openid: openid,
-      consumed: false,
-    }
-
-    if (foodIds && Array.isArray(foodIds) && foodIds.length > 0) {
-      query._id = _.in(foodIds)
-    }
-
-    const res = await db.collection('fridge_items').where(query).get()
-    let foods = res.data || []
+    // 调用 getUserFoods 云函数获取食材列表
+    const res = await cloud.callFunction({
+      name: 'getUserFoods',
+      data: { openid }
+    })
+    let foods = res.result.data || []
 
     // 分类计算状态
     const result = {
@@ -192,7 +197,7 @@ async function checkExpiryFoods(openid, options = {}) {
  * @param {object} food - 食材数据
  * @param {string} tid - 模板ID
  */
-async function pushSingleMessage(openid, food, tid) {
+async function pushSingleMessage(openid, food, tid, useHttpApi = false) {
   if (!tid) {
     console.warn('⚠️ 未配置模板ID，无法发送消息')
     return { success: false, reason: 'no_template' }
@@ -203,40 +208,119 @@ async function pushSingleMessage(openid, food, tid) {
     const expiryDate = food.expiryDate ? new Date(food.expiryDate) : null
     
     // 构建模板数据
+    // 注意：微信订阅消息 number 类型字段要求 value 为数字（正整数），不能是字符串
     const data = {}
     data[TEMPLATE_FIELDS.name] = { value: (food.name || '未知食材').substring(0, 20) }
-    data[TEMPLATE_FIELDS.date] = { value: expiryDate ? formatDate(expiryDate) : '未设置' }
+    data[TEMPLATE_FIELDS.expiryDate] = { value: expiryDate ? formatDate(expiryDate) : '未设置' }
     data[TEMPLATE_FIELDS.location] = { value: getLocationLabel(food.location) || '冰箱' }
-    
-    if (food._status === 'expired') {
-      data[TEMPLATE_FIELDS.status] = { value: `已过期${food.daysExpired || 0}天` }
-    } else if (food._status === 'expiringSoon') {
-      data[TEMPLATE_FIELDS.status] = { value: `${food.daysLeft || 0}天后到期` }
-    } else {
-      data[TEMPLATE_FIELDS.status] = { value: '正常' }
-    }
+    // number 类型：必须是正整数（1~9999），quantity 为空或非正数时默认 1
+    const quantityNum = Math.max(1, Math.min(9999, Math.floor(Number(food.quantity) || 1)))
+    data[TEMPLATE_FIELDS.quantity] = { value: quantityNum }
 
-    const res = await cloud.openapi.subscribeMessage.send({
+    const sendParams = {
       touser: openid,
       templateId: tid,
       page: `pages/home/home?tab=fridge`,
       data,
-      miniprogramState: 'formal', // developer | trial | formal
-    })
+      miniprogramState: 'formal',
+    }
+
+    console.log(`📤 [推送参数] touser=${openid?.substring(0,8)}..., templateId=${tid}, useHttpApi=${useHttpApi}, food=${food.name}`)
+
+    // ★ 关键修改：只走一种 API，杜绝"云调用成功又走 HTTP 降级"导致重复推送
+    let res
+    if (useHttpApi) {
+      // 定时触发器：直接用 HTTP API（无有效 wxCloudApiToken）
+      res = await sendViaHttpApi(sendParams)
+    } else {
+      // 客户端触发：使用云调用（有有效 wxCloudApiToken）
+      res = await cloud.openapi.subscribeMessage.send(sendParams)
+    }
 
     console.log(`📨 [推送] ${food.name}:`, res.errCode === 0 ? '成功' : res.errMsg)
     return { success: res.errCode === 0, errCode: res.errCode, errMsg: res.errMsg }
   } catch (e) {
     console.error('❌ 推送失败:', e.message)
+    console.error('❌ 推送失败详情:', JSON.stringify({ openid: openid?.substring(0,8), tid, foodName: food.name, useHttpApi }))
     return { success: false, errMsg: e.message }
   }
+}
+
+// access_token 缓存（内存级别，单次云函数执行内有效）
+let _accessTokenCache = { token: '', expireAt: 0 }
+
+/**
+ * 通过 HTTP API 发送订阅消息（定时触发器降级方案）
+ * 
+ * 使用 appid + appsecret 获取 access_token，然后直接调用微信接口
+ * 
+ * 配置方式：在云开发控制台 → 云函数 → sendExpiryNotify → 配置 → 环境变量 中添加：
+ *   APP_ID = 你的小程序appid
+ *   APP_SECRET = 你的小程序appsecret（在 mp.weixin.qq.com → 开发管理 → 开发设置 中获取）
+ */
+async function sendViaHttpApi(params) {
+  const { touser, templateId, page, data, miniprogramState } = params
+  const axios = require('axios')
+
+  // 1. 获取 access_token
+  const accessToken = await getAccessToken(axios)
+
+  // 2. 调用订阅消息接口
+  const url = `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${accessToken}`
+  const httpRes = await axios.post(url, {
+    touser,
+    template_id: templateId,
+    page,
+    data,
+    miniprogram_state: miniprogramState,
+  })
+
+  // 统一返回格式
+  return {
+    errCode: httpRes.data.errcode || 0,
+    errMsg: httpRes.data.errmsg || 'ok',
+  }
+}
+
+/**
+ * 获取 access_token（带缓存）
+ */
+async function getAccessToken(axios) {
+  // 检查缓存
+  const now = Date.now()
+  if (_accessTokenCache.token && _accessTokenCache.expireAt > now) {
+    return _accessTokenCache.token
+  }
+
+  const appId = process.env.APP_ID || cloud.getWXContext().APPID
+  const appSecret = process.env.APP_SECRET
+
+  if (!appSecret) {
+    throw new Error('未配置 APP_SECRET 环境变量，请在云开发控制台 → 云函数 → sendExpiryNotify → 配置 → 环境变量 中添加 APP_SECRET')
+  }
+
+  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`
+  const res = await axios.get(url)
+
+  if (res.data.errcode) {
+    throw new Error(`获取 access_token 失败: ${res.data.errmsg} (errcode: ${res.data.errcode})`)
+  }
+
+  // 缓存 token（提前5分钟过期，避免边界问题）
+  _accessTokenCache = {
+    token: res.data.access_token,
+    expireAt: now + (res.data.expires_in - 300) * 1000,
+  }
+
+  console.log(`🔑 [access_token] 获取成功，有效期 ${res.data.expires_in}s`)
+  return _accessTokenCache.token
 }
 
 /**
  * 发送到期提醒通知（给单个用户）
  */
 async function sendExpiryNotification(openid, options = {}) {
-  const { daysBefore = DEFAULT_DAYS_BEFORE, templateId, forceSend } = options
+  const { daysBefore = DEFAULT_DAYS_BEFORE, templateId, forceSend, useHttpApi = false } = options
   const tid = templateId || DEFAULT_TEMPLATE_ID
 
   // Step 1: 检查到期食材
@@ -247,10 +331,20 @@ async function sendExpiryNotification(openid, options = {}) {
   }
 
   // 收集需要推送的食材（优先级高的先推）
-  const urgentFoods = [
-    ...checkResult.expired.slice(0, 3),     // 最多3个过期的
-    ...checkResult.expiringSoon.filter(f => f.urgency === 'high').slice(0, 2),
+  // expired 已按过期天数降序排列，expiringSoon 已按剩余天数升序排列
+  const rawUrgentFoods = [
+    ...checkResult.expired.slice(0, 3),        // 最多3个过期的
+    ...checkResult.expiringSoon.slice(0, 2),   // 最多2个即将到期的
   ]
+
+  // 按食物名去重：同一食材只保留最紧急的一条，避免推送两条相同的模板消息
+  const seenNames = new Set()
+  const urgentFoods = rawUrgentFoods.filter(food => {
+    const key = (food.name || '').trim().toLowerCase()
+    if (seenNames.has(key)) return false
+    seenNames.add(key)
+    return true
+  })
 
   if (urgentFoods.length === 0) {
     return {
@@ -266,7 +360,7 @@ async function sendExpiryNotification(openid, options = {}) {
   let successCount = 0
 
   for (const food of urgentFoods.slice(0, MAX_PUSH_PER_REQUEST)) {
-    const pushRes = await pushSingleMessage(openid, food, tid)
+    const pushRes = await pushSingleMessage(openid, food, tid, useHttpApi)
     results.push({ foodName: food.name, ...pushRes })
     if (pushRes.success) successCount++
   }
@@ -321,7 +415,16 @@ async function batchSendNotifications(daysBefore = DEFAULT_DAYS_BEFORE) {
 
     const users = usersRes.data || []
 
-    if (users.length === 0) {
+    // 按 openid 去重：避免 user_settings 中同一用户有多条记录导致重复推送
+    const seenOpenids = new Set()
+    const uniqueUsers = users.filter(user => {
+      const oid = user._openid || user.openid
+      if (!oid || seenOpenids.has(oid)) return false
+      seenOpenids.add(oid)
+      return true
+    })
+
+    if (uniqueUsers.length === 0) {
       console.log('⚠️ [定时任务] 没有找到开启通知的用户')
       return {
         success: true,
@@ -332,9 +435,9 @@ async function batchSendNotifications(daysBefore = DEFAULT_DAYS_BEFORE) {
       }
     }
 
-    console.log(`📋 [定时任务] 找到 ${users.length} 个开启通知的用户`)
+    console.log(`📋 [定时任务] 找到 ${uniqueUsers.length} 个开启通知的用户（去重前 ${users.length}）`)
 
-    for (const user of users) {
+    for (const user of uniqueUsers) {
       try {
         const userOpenid = user._openid || user.openid
         if (!userOpenid) continue
@@ -346,6 +449,7 @@ async function batchSendNotifications(daysBefore = DEFAULT_DAYS_BEFORE) {
           daysBefore: notifyDays,
           templateId: tid,
           forceSend: true,
+          useHttpApi: true,   // 定时触发器无有效 wxCloudApiToken，直接用 HTTP API
         })
 
         totalProcessed++

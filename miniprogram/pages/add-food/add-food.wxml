@@ -194,7 +194,7 @@
     <!-- 生产日期 -->
     <view class="form-group">
       <view class="form-label"><text>生产日期</text></view>
-      <picker mode="date" value="{{formData.productionDate}}" start="{{maxProdDate}}" end="{{today}}" bindchange="onDateChange" data-field="productionDate">
+      <picker mode="date" value="{{formData.productionDate}}" end="{{today}}" bindchange="onDateChange" data-field="productionDate">
         <view class="form-input form-input--picker">
           {{formData.productionDate || '请选择生产日期'}}
         </view>
@@ -233,7 +233,7 @@
         </view>
       </view>
 
-      <picker wx:if="{{shelfMode === 'date'}}" mode="date" value="{{formData.expiryDate}}" start="{{formData.productionDate || today}}" bindchange="onDateChange" data-field="expiryDate">
+      <picker wx:if="{{shelfMode === 'date'}}" mode="date" value="{{formData.expiryDate}}" bindchange="onDateChange" data-field="expiryDate">
         <view class="form-input form-input--picker">
           {{formData.expiryDate || '选择过期日期'}}
         </view>
