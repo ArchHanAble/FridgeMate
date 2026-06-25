@@ -20,6 +20,16 @@ interface CookRecord {
   experienceExpanded?: boolean  // 心得是否展开
 }
 
+interface CommentItem {
+  _id: string
+  recordId: string
+  openid: string
+  content: string
+  createdAt: Date | number
+  nickName: string
+  avatarUrl: string
+}
+
 interface RecipeOption {
   _id: string
   name: string
@@ -37,6 +47,20 @@ Page({
     filteredRecords: [] as CookRecord[],
     loading: true,
     isEmpty: false,
+
+    // === 分页数据 ===
+    page: 1,
+    pageSize: 5,
+    hasMore: false,
+    loadingMore: false,
+    total: 0,
+
+    // === 评论数据 ===
+    commentMap: {} as Record<string, CommentItem[]>,
+
+    // === 删除气泡 ===
+    deleteBubbleId: '',
+    deleteBubbleName: '',
 
     // === 统计数据 ===
     stats: {
@@ -80,7 +104,7 @@ Page({
 
   onLoad() {
     this._setDefaultDate()
-    this._loadData()
+    this._loadData(1, false)
   },
 
   onShow() {
@@ -90,52 +114,130 @@ Page({
   },
 
   onPullDownRefresh() {
-    this._loadData().then(() => wx.stopPullDownRefresh())
+    this._loadData(1, false).then(() => wx.stopPullDownRefresh())
   },
 
   // ==================== 数据加载 ====================
 
-  async _loadData(): Promise<void> {
-    this.setData({ loading: true })
+  /**
+   * 加载做菜历史数据
+   * @param page    页码
+   * @param append  是否追加模式（loadMore 时为 true，否则替换列表）
+   */
+  async _loadData(page: number, append: boolean): Promise<void> {
+    const isFirstPage = page === 1
+
+    this.setData({
+      loading: isFirstPage && !append,
+      loadingMore: !isFirstPage && append,
+    })
 
     try {
       const res = await wx.cloud.callFunction({
         name: 'getCookHistory',
-        data: {},
+        data: {
+          page,
+          pageSize: this.data.pageSize,
+          keyword: this.data.searchKeyword.trim(),
+        },
       })
 
       const result = res.result as any
 
       if (result?.success && Array.isArray(result.records)) {
-        const records = result.records.map((r: any) => ({
+        const newRecords = result.records.map((r: any) => ({
           ...r,
           dateStr: r.dateStr || this._formatDate(r.cookedAt || Date.now()),
           ingredientsExpanded: false,
           experienceExpanded: false,
+          _commentInput: '',
+          _commentSubmitting: false,
         }))
 
-        // 计算统计数据
-        const stats = this._calculateStats(records, result.stats)
+        // 追加模式：合并旧记录；替换模式：直接使用新记录
+        const mergedRecords = append
+          ? [...this.data.records, ...newRecords]
+          : newRecords
 
-        this.setData({ records, stats, loading: false }, () => {
+        // 计算统计数据（仅首页需要）
+        let stats = this.data.stats
+        if (isFirstPage) {
+          stats = this._calculateStats(mergedRecords, result.stats)
+        }
+
+        const hasMore = result.hasMore !== undefined ? result.hasMore : (result.records.length >= this.data.pageSize)
+        const total = result.total || 0
+
+        this.setData({
+          records: mergedRecords,
+          stats,
+          page: result.page || page,
+          hasMore,
+          total,
+          loading: false,
+          loadingMore: false,
+        }, () => {
           this._applyFilter()
         })
+
+        // 异步加载评论（不阻塞页面渲染）
+        if (newRecords.length > 0) {
+          this._loadComments(append ? mergedRecords : newRecords)
+        }
       } else {
         this.setData({
-          records: [],
-          filteredRecords: [],
-          isEmpty: true,
+          records: append ? this.data.records : [],
+          filteredRecords: append ? this.data.filteredRecords : [],
+          isEmpty: !append && true,
           loading: false,
+          loadingMore: false,
+          hasMore: false,
         })
       }
     } catch (e) {
       console.error('加载做菜历史失败:', e)
       this.setData({
-        records: [],
-        filteredRecords: [],
-        isEmpty: true,
+        records: append ? this.data.records : [],
+        filteredRecords: append ? this.data.filteredRecords : [],
+        isEmpty: !append && true,
         loading: false,
+        loadingMore: false,
+        hasMore: false,
       })
+    }
+  },
+
+  /** 加载下一页 */
+  loadMore(): void {
+    if (this.data.loadingMore || !this.data.hasMore) return
+    this._loadData(this.data.page + 1, true)
+  },
+
+  /** 批量加载所有记录的评论 */
+  async _loadComments(records: CookRecord[]): Promise<void> {
+    const recordIds = records.map(r => r._id).filter(Boolean)
+    if (recordIds.length === 0) return
+
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'getComments',
+        data: { recordIds },
+      })
+
+      const result = res.result as any
+      if (result?.success && result.commentMap) {
+        // 预处理评论时间格式（WXML 中无法直接调用函数）
+        const formattedMap: Record<string, CommentItem[]> = {}
+        Object.keys(result.commentMap).forEach(key => {
+          formattedMap[key] = result.commentMap[key].map((c: any) => ({
+            ...c,
+            timeText: this._formatCommentTime(c.createdAt),
+          }))
+        })
+        this.setData({ commentMap: formattedMap })
+      }
+    } catch (e) {
+      console.error('加载评论失败:', e)
     }
   },
 
@@ -143,39 +245,30 @@ Page({
 
   onSearchInput(e: WechatMiniprogram.Input.InputEvent) {
     this.setData({ searchKeyword: e.detail.value })
-    this._applyFilter()
   },
 
   onSearchConfirm() {
-    this._applyFilter()
+    // 搜索时重置到第 1 页，从服务端重新加载
+    this._loadData(1, false)
   },
 
   toggleSearch() {
+    const newShowSearch = !this.data.showSearch
     this.setData({
-      showSearch: !this.data.showSearch,
+      showSearch: newShowSearch,
       searchKeyword: '',
-    }, () => {
-      if (!this.data.showSearch) {
-        this._applyFilter()
-      }
     })
+    if (!newShowSearch) {
+      // 关闭搜索时重置到第 1 页
+      this._loadData(1, false)
+    }
   },
 
   _applyFilter(): void {
-    const { searchKeyword, records } = this.data
-    let filtered: CookRecord[]
+    const { records } = this.data
 
-    if (searchKeyword.trim()) {
-      const keyword = searchKeyword.trim().toLowerCase()
-      filtered = records.filter(r =>
-        r.name.toLowerCase().includes(keyword)
-      )
-    } else {
-      filtered = records
-    }
-
-    // 按时间倒序排列
-    filtered.sort((a, b) => b.cookedAt - a.cookedAt)
+    // 数据已按时间倒序从服务端返回，直接使用
+    const filtered = [...records]
 
     this.setData({
       filteredRecords: filtered,
@@ -404,7 +497,7 @@ Page({
         wx.hideLoading()
         wx.showToast({ title: '记录成功', icon: 'success' })
         this.setData({ showAddModal: false })
-        this._loadData()
+        this._loadData(1, false)
       } else {
         wx.hideLoading()
         wx.showToast({ title: result?.errMsg || '保存失败', icon: 'none' })
@@ -414,6 +507,99 @@ Page({
       wx.hideLoading()
       wx.showToast({ title: '提交失败', icon: 'none' })
     }
+  },
+
+  // ==================== 评论功能 ====================
+
+  /** 输入评论内容 */
+  onCommentInput(e: WechatMiniprogram.Input.InputEvent) {
+    const recordId = e.currentTarget.dataset.id as string
+    const value = e.detail.value
+    this._updateRecordField(recordId, '_commentInput', value)
+  },
+
+  /** 提交评论 */
+  async submitComment(e: WechatMiniprogram.TouchEvent) {
+    const recordId = e.currentTarget.dataset.id as string
+    const record = this.data.records.find(r => r._id === recordId)
+    const content = ((record as any)?._commentInput || '').trim()
+
+    if (!content) {
+      wx.showToast({ title: '请输入评论内容', icon: 'none' })
+      return
+    }
+
+    if ((record as any)?._commentSubmitting) return
+
+    this._updateRecordField(recordId, '_commentSubmitting', true)
+
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'addComment',
+        data: { recordId, content },
+      })
+
+      const result = res.result as any
+
+      if (result?.success) {
+        // 清空输入框 + 取消提交状态（克隆数组确保响应式）
+        this._updateRecordField(recordId, '_commentInput', '')
+        this._updateRecordField(recordId, '_commentSubmitting', false)
+
+        // 重新加载评论
+        this._loadComments(this.data.records)
+      } else {
+        wx.showToast({ title: result?.errMsg || '评论失败', icon: 'none' })
+        this._updateRecordField(recordId, '_commentSubmitting', false)
+      }
+    } catch (e: any) {
+      console.error('评论提交失败:', e)
+      wx.showToast({ title: '评论失败', icon: 'none' })
+      this._updateRecordField(recordId, '_commentSubmitting', false)
+    }
+  },
+
+  /** 同步更新 records 和 filteredRecords 中某条记录的字段（克隆数组确保响应式） */
+  _updateRecordField(recordId: string, field: string, value: any) {
+    const updates: any = {}
+
+    // 克隆 records 数组，只替换目标对象
+    const recordIdx = this.data.records.findIndex(r => r._id === recordId)
+    if (recordIdx >= 0) {
+      const newRecords = [...this.data.records]
+      newRecords[recordIdx] = { ...newRecords[recordIdx], [field]: value }
+      updates.records = newRecords
+    }
+
+    // 克隆 filteredRecords 数组
+    const filteredIdx = this.data.filteredRecords.findIndex(r => r._id === recordId)
+    if (filteredIdx >= 0) {
+      const newFiltered = [...this.data.filteredRecords]
+      newFiltered[filteredIdx] = { ...newFiltered[filteredIdx], [field]: value }
+      updates.filteredRecords = newFiltered
+    }
+
+    if (Object.keys(updates).length > 0) this.setData(updates)
+  },
+
+  /** 格式化评论时间 */
+  _formatCommentTime(createdAt: any): string {
+    const d = createdAt instanceof Date ? createdAt : new Date(createdAt)
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    const diffHour = Math.floor(diffMs / 3600000)
+    const diffDay = Math.floor(diffMs / 86400000)
+
+    if (diffMin < 1) return '刚刚'
+    if (diffMin < 60) return `${diffMin}分钟前`
+    if (diffHour < 24) return `${diffHour}小时前`
+    if (diffDay < 7) return `${diffDay}天前`
+
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
   },
 
   // ==================== 工具方法 ====================
@@ -532,5 +718,78 @@ Page({
       return r
     })
     this.setData({ records, filteredRecords })
+  },
+
+  // ==================== 删除功能 ====================
+
+  /** 长按记录卡片 → 弹出删除气泡 */
+  onLongPressRecord(e: WechatMiniprogram.TouchEvent) {
+    const id = e.currentTarget.dataset.id as string
+    if (!id) return
+
+    // 从当前列表中找到对应的记录名
+    const record = this.data.filteredRecords.find(r => r._id === id)
+    const name = record?.name || '这条记录'
+
+    this.setData({ deleteBubbleId: id, deleteBubbleName: name })
+  },
+
+  /** 隐藏删除气泡 */
+  hideDeleteBubble() {
+    if (this.data.deleteBubbleId) {
+      this.setData({ deleteBubbleId: '', deleteBubbleName: '' })
+    }
+  },
+
+  /** 点击删除气泡中的删除按钮 → 弹出二次确认对话框 */
+  onTapDeleteBubble() {
+    const id = this.data.deleteBubbleId
+    if (!id) return
+
+    // 先隐藏气泡
+    this.setData({ deleteBubbleId: '', deleteBubbleName: '' })
+
+    wx.showModal({
+      title: '确认删除',
+      content: '确定要删除这条做菜记录吗？删除后无法恢复。',
+      confirmText: '删除',
+      confirmColor: '#FF6B6B',
+      success: (res) => {
+        if (res.confirm) {
+          this._deleteRecord(id)
+        }
+      },
+    })
+  },
+
+  /** 执行删除 */
+  async _deleteRecord(id: string): Promise<void> {
+    wx.showLoading({ title: '删除中...' })
+
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'recordCook',
+        data: {
+          action: 'delete',
+          _id: id,
+        },
+      })
+
+      const result = res.result as any
+
+      if (result?.success) {
+        wx.hideLoading()
+        wx.showToast({ title: '已删除', icon: 'success' })
+        // 重新加载数据（回到第1页）
+        this._loadData(1, false)
+      } else {
+        wx.hideLoading()
+        wx.showToast({ title: result?.errMsg || '删除失败', icon: 'none' })
+      }
+    } catch (e: any) {
+      wx.hideLoading()
+      console.error('删除失败:', e)
+      wx.showToast({ title: '删除失败', icon: 'none' })
+    }
   },
 })

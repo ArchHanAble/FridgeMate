@@ -118,6 +118,13 @@ Component({
       })
     },
 
+    /** 长按菜谱卡片 */
+    onLongPress() {
+      this.triggerEvent('longpress', {
+        name: this.properties.name,
+      })
+    },
+
     /** 图片加载失败 → 标记错误状态（显示空白，不使用 emoji 占位） */
     onImgError() {
       console.warn(`[recipe-card] 图片加载失败: ${this.properties.name}`)

@@ -221,10 +221,16 @@
         </text>
       </view>
 
-      <view class="expiry-item expiry-item--safe" wx:if="{{expiryCheckResult.expired.length === 0 && expiryCheckResult.expiringSoon.length === 0}}">
+      <view class="expiry-item expiry-item--safe" wx:if="{{expiryCheckResult.expired.length === 0 && expiryCheckResult.expiringSoon.length === 0 && (expiryCheckResult.summary.total || 0) > 0}}">
         <text class="expiry-item__icon">✅</text>
         <text class="expiry-item__text">
-          太棒了！{{expiryCheckResult.summary.total || 0}} 项食材全部安全 🎉
+          太棒了！{{expiryCheckResult.summary.total}} 项食材全部安全 🎉
+        </text>
+      </view>
+      <view class="expiry-item expiry-item--safe" wx:elif="{{expiryCheckResult.expired.length === 0 && expiryCheckResult.expiringSoon.length === 0 && (expiryCheckResult.summary.total || 0) === 0}}">
+        <text class="expiry-item__icon">🧊</text>
+        <text class="expiry-item__text">
+          冰箱还是空的，快去添加食材吧～
         </text>
       </view>
 

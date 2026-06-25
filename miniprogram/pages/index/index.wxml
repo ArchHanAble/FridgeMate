@@ -37,19 +37,19 @@
 
     <!-- 统计数字网格 -->
     <view class="stats-grid">
-      <view class="stat-item stat-item--primary">
+      <view class="stat-item stat-item--primary" bindtap="goFridgeDetail">
         <text class="stat-num">{{stats.total}}</text>
         <text class="stat-label">种食材</text>
       </view>
-      <view class="stat-item {{stats.expiring > 0 ? 'stat-item--warning' : ''}}">
+      <view class="stat-item {{stats.expiring > 0 ? 'stat-item--warning' : ''}}" bindtap="goFridgeDetail">
         <text class="stat-num">{{stats.expiring}}</text>
         <text class="stat-label">临期</text>
       </view>
-      <view class="stat-item {{stats.expired > 0 ? 'stat-item--danger' : ''}}">
+      <view class="stat-item {{stats.expired > 0 ? 'stat-item--danger' : ''}}" bindtap="goFridgeDetail">
         <text class="stat-num">{{stats.expired}}</text>
         <text class="stat-label">过期</text>
       </view>
-      <view class="stat-item">
+      <view class="stat-item" bindtap="goRecipes">
         <text class="stat-num">{{stats.canCookRecipes || '?'}}</text>
         <text class="stat-label">可做菜</text>
       </view>
@@ -101,6 +101,22 @@
     </scroll-view>
     <text class="expiry-banner__arrow">›</text>
   </view>
+ <!-- === 快捷操作入口 === -->
+ <view class="quick-actions">
+    <view 
+      class="quick-action" 
+      wx:for="{{quickActions}}" 
+      wx:key="name"
+      data-path="{{item.path}}"
+      bindtap="navigateTo"
+    >
+      <view class="quick-action__icon-wrap" style="background: {{item.bgColor}}">
+        <text class="quick-action__icon">{{item.icon}}</text>
+      </view>
+      <text class="quick-action__label">{{item.label}}</text>
+    </view>
+  </view>
+
 
   <!-- === 今日推荐菜谱 === -->
   <view class="section" wx:if="{{todayRecipes.length > 0}}">
@@ -135,21 +151,7 @@
     </scroll-view>
   </view>
 
-  <!-- === 快捷操作入口 === -->
-  <view class="quick-actions">
-    <view 
-      class="quick-action" 
-      wx:for="{{quickActions}}" 
-      wx:key="name"
-      data-path="{{item.path}}"
-      bindtap="navigateTo"
-    >
-      <view class="quick-action__icon-wrap" style="background: {{item.bgColor}}">
-        <text class="quick-action__icon">{{item.icon}}</text>
-      </view>
-      <text class="quick-action__label">{{item.label}}</text>
-    </view>
-  </view>
+ 
 
   <!-- === 最近添加的食材 === -->
   <view class="section" wx:if="{{recentItems.length > 0}}">
@@ -173,6 +175,7 @@
         status="{{item.status}}"
         show-arrow="{{true}}"
         bind:tap="goFoodDetail"
+        bind:consumetap="onConsumeItem"
         data-id="{{item._id}}"
       />
     </view>

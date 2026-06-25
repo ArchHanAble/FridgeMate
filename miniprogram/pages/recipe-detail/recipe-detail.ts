@@ -40,6 +40,24 @@ Page({
     foodPhoto: '',           // 美食照片本地路径
     base64ImageData: '',     // Base64图片数据
     experience: '',          // 心得体会
+
+    // === 编辑模式 ===
+    isEditing: false,
+    editName: '',
+    editDescription: '',
+    editCookTime: '',
+    editDifficulty: 'easy',
+    editTagsText: '',
+    editImageUrl: '',           // 封面预览（本地路径或原始图片）
+    editBase64ImageData: '',    // 新封面Base64数据
+    editIngredients: [] as any[],
+    editSteps: [] as any[],
+    editSubmitting: false,
+    editDifficulties: [
+      { value: 'easy', label: '简单' },
+      { value: 'medium', label: '中等' },
+      { value: 'hard', label: '较难' },
+    ] as { value: string; label: string }[],
   },
 
   onLoad(options) {
@@ -276,6 +294,61 @@ Page({
 
   goBack() { wx.navigateBack() },
 
+  /** 预览封面大图 */
+  async previewCoverImage() {
+    const { image } = this.data
+    if (!image || image === '/images/placeholder-recipe.png') return
+    let url = image
+    // 如果是 cloud:// 文件 ID，需转换为临时 HTTP 链接
+    if (url.startsWith('cloud://')) {
+      try {
+        const res = await wx.cloud.getTempFileURL({ fileList: [url] })
+        const file = res.fileList?.[0]
+        if (file?.tempFileURL) {
+          url = file.tempFileURL
+        } else {
+          wx.showToast({ title: '图片加载中，请稍后重试', icon: 'none' })
+          return
+        }
+      } catch (e) {
+        console.warn('获取临时图片链接失败:', e)
+        wx.showToast({ title: '图片加载失败', icon: 'none' })
+        return
+      }
+    }
+    wx.previewImage({
+      urls: [url],
+      current: url,
+    })
+  },
+
+  /** 预览步骤图片 */
+  async previewStepImage(e: WechatMiniprogram.TouchEvent) {
+    let url: string = e.currentTarget.dataset.url
+    if (!url) return
+    // 如果是 cloud:// 文件 ID，需转换为临时 HTTP 链接
+    if (url.startsWith('cloud://')) {
+      try {
+        const res = await wx.cloud.getTempFileURL({ fileList: [url] })
+        const file = res.fileList?.[0]
+        if (file?.tempFileURL) {
+          url = file.tempFileURL
+        } else {
+          wx.showToast({ title: '图片加载中，请稍后重试', icon: 'none' })
+          return
+        }
+      } catch (e) {
+        console.warn('获取临时图片链接失败:', e)
+        wx.showToast({ title: '图片加载失败', icon: 'none' })
+        return
+      }
+    }
+    wx.previewImage({
+      urls: [url],
+      current: url,
+    })
+  },
+
   toggleFavorite() {
     const favorites = wx.getStorageSync('favorite_recipes') || []
     let newFavorites: string[]
@@ -473,6 +546,10 @@ Page({
         console.log(`[confirmConsume] 使用菜谱图片URL: ${imageData}`)
       }
 
+      // 获取当前日期（客户端本地时间，避免云函数服务器时区问题）
+      const today = new Date()
+      const cookedAt = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
       const res = await wx.cloud.callFunction({
         name: 'consumeIngredients',
         data: {
@@ -480,6 +557,7 @@ Page({
           customIngredients: validIngredients,
           image: imageData,                    // 美食照片（Base64或URL）
           experience: (experience || '').trim(), // 心得体会
+          cookedAt,                            // 做菜日期（YYYY-MM-DD）
         },
       })
 
@@ -526,6 +604,10 @@ Page({
       const ingredients = (this.data.displayIngredients || [])
         .map((i: any) => i.name)
 
+      // 获取当前日期（客户端本地时间，避免云函数服务器时区问题）
+      const today = new Date()
+      const cookedAt = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
       const res = await wx.cloud.callFunction({
         name: 'recordCook',
         data: {
@@ -533,6 +615,7 @@ Page({
           recipeName: this.data.name,
           image: this.data.image || '',
           ingredients,
+          cookedAt,
         },
       })
 
@@ -549,6 +632,277 @@ Page({
       // 即使云端失败也标记为已做（乐观更新）
       this.setData({ isRecorded: true, isRecording: false })
       wx.showToast({ title: '📝 已记录（本地）', icon: 'success' })
+    } finally {
+      wx.hideLoading()
+    }
+  },
+
+  /* ==================== 编辑模式 ==================== */
+
+  /** 进入编辑模式：将当前菜谱数据复制到编辑表单 */
+  startEdit() {
+    const { name, description, cookTime, difficulty, tags, image, displayIngredients, steps } = this.data as any
+
+    // 生成带唯一ID的食材编辑列表
+    const editIngredients = (displayIngredients || []).map((ing: any, idx: number) => ({
+      id: `edit_ing_${idx}`,
+      name: ing.name || '',
+      category: ing.category || 'other',
+      amount: ing.amount !== undefined ? String(ing.amount) : '',
+      unit: ing.unit || '',
+      isEssential: ing.isEssential !== false,
+    }))
+
+    // 生成步骤编辑列表
+    const editSteps = (steps || []).map((s: any) => ({
+      text: s.text || '',
+    }))
+
+    this.setData({
+      isEditing: true,
+      editName: name || '',
+      editDescription: description || '',
+      editCookTime: cookTime ? String(cookTime) : '',
+      editDifficulty: difficulty || 'easy',
+      editTagsText: Array.isArray(tags) ? tags.join('、') : '',
+      editImageUrl: image || '',
+      editBase64ImageData: '',
+      editIngredients: editIngredients.length > 0 ? editIngredients : [{ id: 'edit_ing_0', name: '', category: 'other', amount: '', unit: '', isEssential: true }],
+      editSteps: editSteps.length > 0 ? editSteps : [{ text: '' }],
+      editSubmitting: false,
+    })
+  },
+
+  /** 取消编辑 */
+  cancelEdit() {
+    this.setData({ isEditing: false })
+  },
+
+  /** 编辑模式：通用输入 */
+  onEditInput(e: WechatMiniprogram.CustomEvent) {
+    const field = e.currentTarget.dataset.field as string
+    if (!field) return
+    this.setData({ [field]: e.detail.value })
+  },
+
+  /** 编辑模式：选择难度 */
+  selectEditDifficulty(e: WechatMiniprogram.TouchEvent) {
+    const value = e.currentTarget.dataset.value as string
+    if (value) this.setData({ editDifficulty: value })
+  },
+
+  /** 编辑模式：选择封面图 */
+  async chooseEditCover() {
+    try {
+      const chooseRes = await wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+      })
+      const tempPath = chooseRes.tempFiles?.[0]?.tempFilePath
+      if (!tempPath) return
+
+      wx.showLoading({ title: '处理中...' })
+
+      let finalPath = tempPath
+      try {
+        const compressRes = await wx.compressImage({
+          src: tempPath,
+          quality: 50,
+          compressedWidth: 600,
+          compressedHeight: 600,
+        })
+        finalPath = compressRes.tempFilePath
+      } catch (compressErr: any) {
+        console.warn('[chooseEditCover] 压缩失败，使用原图:', compressErr)
+      }
+
+      const fs = wx.getFileSystemManager()
+      let base64Data = ''
+      try {
+        base64Data = fs.readFileSync(finalPath, 'base64') as string
+      } catch (readErr: any) {
+        base64Data = await new Promise<string>((resolve, reject) => {
+          fs.readFile({
+            filePath: finalPath,
+            encoding: 'base64',
+            success(fileRes: any) { resolve(String(fileRes.data)) },
+            fail(err: any) { reject(err) },
+          })
+        })
+      }
+
+      this.setData({
+        editImageUrl: tempPath,
+        editBase64ImageData: base64Data,
+      })
+
+      wx.hideLoading()
+    } catch (e: any) {
+      wx.hideLoading()
+      if (e.errMsg && !String(e.errMsg).includes('cancel')) {
+        console.error('封面图处理失败:', e)
+        wx.showToast({ title: e.message || '图片处理失败', icon: 'none' })
+      }
+    }
+  },
+
+  /** 编辑模式：删除新封面（恢复原封面） */
+  removeEditCover() {
+    this.setData({ editImageUrl: '', editBase64ImageData: '' })
+  },
+
+  /** 编辑模式：获取食材索引 */
+  _getEditIngIndex(e: WechatMiniprogram.BaseEvent): number {
+    const idx = e.currentTarget.dataset.ingIndex
+    return idx === undefined || idx === '' ? -1 : Number(idx)
+  },
+
+  /** 编辑模式：食材字段输入 */
+  onEditIngredientInput(e: WechatMiniprogram.CustomEvent) {
+    const index = this._getEditIngIndex(e)
+    if (index < 0) return
+    const field = e.currentTarget.dataset.field as string
+    const key = `editIngredients[${index}].${field}`
+    this.setData({ [key]: e.detail.value })
+  },
+
+  /** 编辑模式：添加食材 */
+  addEditIngredient() {
+    const list = [...this.data.editIngredients, {
+      id: `edit_ing_${Date.now()}`,
+      name: '', category: 'other', amount: '', unit: '', isEssential: true,
+    }]
+    this.setData({ editIngredients: list })
+  },
+
+  /** 编辑模式：删除食材 */
+  removeEditIngredient(e: WechatMiniprogram.TouchEvent) {
+    const index = this._getEditIngIndex(e)
+    if (index < 0) return
+    if (this.data.editIngredients.length <= 1) {
+      wx.showToast({ title: '至少保留一种食材', icon: 'none' })
+      return
+    }
+    const list = this.data.editIngredients.filter((_, i) => i !== index)
+    this.setData({ editIngredients: list })
+  },
+
+  /** 编辑模式：切换必需食材 */
+  toggleEditIngredientEssential(e: WechatMiniprogram.TouchEvent) {
+    const index = this._getEditIngIndex(e)
+    if (index < 0) return
+    const current = this.data.editIngredients[index].isEssential
+    this.setData({ [`editIngredients[${index}].isEssential`]: !current })
+  },
+
+  /** 编辑模式：步骤文字输入 */
+  onEditStepInput(e: WechatMiniprogram.CustomEvent) {
+    const index = Number(e.currentTarget.dataset.index)
+    if (isNaN(index)) return
+    this.setData({ [`editSteps[${index}].text`]: e.detail.value })
+  },
+
+  /** 编辑模式：添加步骤 */
+  addEditStep() {
+    this.setData({ editSteps: [...this.data.editSteps, { text: '' }] })
+  },
+
+  /** 编辑模式：删除步骤 */
+  removeEditStep(e: WechatMiniprogram.TouchEvent) {
+    const index = Number(e.currentTarget.dataset.index)
+    if (isNaN(index)) return
+    if (this.data.editSteps.length <= 1) {
+      wx.showToast({ title: '至少保留一个步骤', icon: 'none' })
+      return
+    }
+    const list = this.data.editSteps.filter((_, i) => i !== index)
+    this.setData({ editSteps: list })
+  },
+
+  /** 编辑模式：校验 */
+  _validateEdit(): boolean {
+    const { editName, editIngredients, editSteps } = this.data
+    if (!editName.trim()) {
+      wx.showToast({ title: '请填写菜名', icon: 'none' })
+      return false
+    }
+    const validIng = editIngredients.filter((i) => i.name.trim())
+    if (!validIng.length) {
+      wx.showToast({ title: '请填写至少一种食材', icon: 'none' })
+      return false
+    }
+    const validSteps = editSteps.filter((s) => s.text.trim())
+    if (!validSteps.length) {
+      wx.showToast({ title: '请填写至少一个步骤', icon: 'none' })
+      return false
+    }
+    return true
+  },
+
+  /** 提交编辑 */
+  async submitEdit() {
+    if (this.data.editSubmitting) return
+    if (!this._validateEdit()) return
+
+    this.setData({ editSubmitting: true })
+    wx.showLoading({ title: '保存中...' })
+
+    const {
+      _id, editName, editDescription, editCookTime, editDifficulty,
+      editTagsText, editIngredients, editSteps, editBase64ImageData,
+    } = this.data as any
+
+    const tags = editTagsText
+      .split(/[,，、]/)
+      .map((t: string) => t.trim())
+      .filter(Boolean)
+
+    try {
+      const imageData = editBase64ImageData
+        ? `data:image/jpeg;base64,${editBase64ImageData}`
+        : ''
+
+      const res = await wx.cloud.callFunction({
+        name: 'editRecipe',
+        data: {
+          recipeId: _id,
+          name: editName.trim(),
+          description: editDescription.trim(),
+          cookTime: Number(editCookTime) || 0,
+          difficulty: editDifficulty,
+          tags,
+          ingredients: editIngredients
+            .filter((i: any) => i.name.trim())
+            .map((i: any) => ({
+              name: i.name.trim(),
+              category: i.category || 'other',
+              amount: i.amount !== '' ? Number(i.amount) || i.amount : '适量',
+              unit: i.unit || '',
+              isEssential: i.isEssential !== false,
+            })),
+          steps: editSteps
+            .filter((s: any) => s.text.trim())
+            .map((s: any) => ({ text: s.text.trim() })),
+          image: imageData,
+        },
+      })
+
+      const result = res.result as any
+
+      if (result?.success) {
+        wx.showToast({ title: result.message || '✅ 菜谱已更新', icon: 'success', duration: 1500 })
+        this.setData({ isEditing: false, editSubmitting: false })
+        // 重新加载菜谱数据以显示最新内容
+        await this._loadDetail()
+      } else {
+        throw new Error(result?.errMsg || '保存失败')
+      }
+    } catch (e: any) {
+      console.error('编辑菜谱失败:', e)
+      wx.showToast({ title: e.message || '保存失败', icon: 'none' })
+      this.setData({ editSubmitting: false })
     } finally {
       wx.hideLoading()
     }

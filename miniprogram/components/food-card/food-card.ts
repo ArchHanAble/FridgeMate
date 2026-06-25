@@ -40,6 +40,8 @@ Component({
     locationText: '',
     expired: false,
     expiring: false,
+    /** 是否显示"已消耗"气泡 */
+    showConsumeBubble: false,
   },
 
   observers: {
@@ -69,6 +71,15 @@ Component({
       this._updateExpiryInfo()
       this._updateStatusDisplay()
       this.setData({ locationText: LOCATION_LABELS[this.properties.location] || '' })
+    },
+    detached() {
+      this._clearBubbleTimer()
+    },
+  },
+
+  pageLifetimes: {
+    hide() {
+      this._hideBubble()
     },
   },
 
@@ -115,6 +126,50 @@ Component({
         name: this.properties.name,
         ...this.properties,
       })
+    },
+
+    /** 长按食材卡片 — 弹出"已消耗"气泡 */
+    onLongPress() {
+      // 已消耗的不弹出
+      if (this.properties.status === 'consumed') {
+        wx.showToast({ title: '该食材已消耗', icon: 'none' })
+        return
+      }
+      // 清除之前的定时器
+      this._clearBubbleTimer()
+      // 显示气泡
+      this.setData({ showConsumeBubble: true })
+      // 3秒后自动隐藏
+      this._bubbleTimer = setTimeout(() => {
+        this._hideBubble()
+      }, 3000)
+    },
+
+    /** 点击气泡中的"已消耗" — 触发 consumetap 事件给父页面 */
+    onConsumeTap() {
+      this._hideBubble()
+      this.triggerEvent('consumetap', {
+        name: this.properties.name,
+        quantity: this.properties.quantity,
+        unit: this.properties.unit,
+        status: this.properties.status,
+      })
+    },
+
+    /** 隐藏气泡 */
+    _hideBubble() {
+      this._clearBubbleTimer()
+      if (this.data.showConsumeBubble) {
+        this.setData({ showConsumeBubble: false })
+      }
+    },
+
+    /** 清除定时器 */
+    _clearBubbleTimer() {
+      if (this._bubbleTimer) {
+        clearTimeout(this._bubbleTimer)
+        this._bubbleTimer = null
+      }
     },
   },
 })

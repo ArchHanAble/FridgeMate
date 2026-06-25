@@ -66,7 +66,9 @@
       servings="{{item.servings}}"
       missing-ingredients="{{item.missingIngredients}}"
       bind:tap="goDetail"
+      bind:longpress="onRecipeLongPress"
       data-id="{{item._id}}"
+      data-index="{{index}}"
     />
   </view>
 
@@ -92,5 +94,19 @@
   <!-- 加载更多 -->
   <view class="load-more" wx:if="{{hasMore && !loading && recipes.length > 0}}" bindtap="loadMore">
     <text>{{loadingMore ? '加载中...' : '加载更多 ↓'}}</text>
+  </view>
+</view>
+
+<!-- === 删除菜谱气泡（放在 page-container 外，避免 fixed 定位导致滚动位置异常） === -->
+<view class="delete-bubble-wrapper" wx:if="{{bubbleVisible}}" catchtap="onHideBubble">
+  <view class="delete-bubble">
+    <view class="delete-bubble__tip">
+      <text>长按了「{{bubbleTargetName}}」</text>
+    </view>
+    <view class="delete-bubble__action" catchtap="onTapDeleteBubble">
+      <text class="delete-bubble__icon">🗑</text>
+      <text>删除菜谱</text>
+    </view>
+    <view class="delete-bubble__arrow"></view>
   </view>
 </view>

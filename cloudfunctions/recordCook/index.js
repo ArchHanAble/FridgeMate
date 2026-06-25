@@ -5,27 +5,66 @@ const db = cloud.database()
 const _ = db.command
 
 /**
- * 标记做过 — 轻量记录做菜历史（不扣食材库存）
- *
- * 用途：用户在菜谱详情页点击"标记做过"时调用，
- *       只写入 cooking_history 集合，不操作 fridge_items。
+ * 标记做过 / 删除记录 — 统一入口
  *
  * 入参：
+ *   - action?: string    操作类型：'delete' 删除记录，其他/不传 为创建记录
+ *
+ * 创建记录（默认）：
  *   - recipeId: string    菜谱 ID
  *   - recipeName: string  菜名
- *   - image: string        菜谱封面图 URL（可选，用户可上传自定义图片）
- *   - ingredients?: string[]  消耗的食材列表（可选，前端传入）
+ *   - image: string       菜谱封面图 URL（可选）
+ *   - ingredients?: string[]  消耗的食材列表（可选）
  *   - experience?: string  做菜心得分享（可选）
  *   - cookedAt?: string    做菜日期（可选，格式：YYYY-MM-DD，默认当天）
  *
+ * 删除记录：
+ *   - _id: string         要删除的记录 ID
+ *
  * 返回：
  *   - success, errMsg
- *   - _id: 新记录的 ID
  */
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
 
+  const { action } = event
+
+  // 删除操作
+  if (action === 'delete') {
+    return handleDelete(event, openid)
+  }
+
+  // 默认：创建做菜记录
+  return handleCreate(event, openid)
+}
+
+/**
+ * 删除做菜记录
+ */
+async function handleDelete(event, openid) {
+  const { _id } = event
+
+  if (!_id) {
+    return { success: false, errMsg: '记录ID不能为空' }
+  }
+
+  console.log(`🗑️ 删除做菜记录: id=${_id}, openid=${openid}`)
+
+  try {
+    await db.collection('cooking_history').doc(_id).remove()
+    console.log(`✅ 做菜记录已删除: id=${_id}`)
+    return { success: true, message: '删除成功' }
+  } catch (err) {
+    console.error('❌ 删除做菜记录失败:', err)
+    return { success: false, errMsg: err.message || '删除失败' }
+  }
+}
+
+/**
+ * 创建做菜记录（原有逻辑）
+ */
+async function handleCreate(event, openid) {
   const { recipeId, recipeName, image, ingredients, experience, cookedAt } = event
 
   // 必填校验

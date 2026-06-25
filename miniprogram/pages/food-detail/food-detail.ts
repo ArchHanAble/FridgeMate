@@ -357,7 +357,7 @@ Page({
 
   /** 确认调整库存 */
   async confirmAdjustStock() {
-    const { previewQuantity, quantity, _id } = this.data
+    const { previewQuantity, quantity, _id, status: currentStatus } = this.data
 
     if (previewQuantity < 0) {
       wx.showToast({ title: '库存不能为负数', icon: 'none' })
@@ -369,32 +369,59 @@ Page({
       return
     }
 
+    // 库存归零时，自动标记为已消耗
+    const willBeConsumed = previewQuantity <= 0
+    // 库存从0恢复为正数时，需要重新计算保质期状态
+    const willBeRestored = previewQuantity > 0 && quantity <= 0
+
     wx.showLoading({ title: '更新中...' })
 
     try {
+      const updates: Record<string, any> = { quantity: Math.max(0, previewQuantity) }
+      
+      // 库存归零 → 云函数会自动设置 status: 'consumed'，这里显式传递以确保原子性
+      if (willBeConsumed && currentStatus !== 'consumed') {
+        updates.status = 'consumed'
+      }
+
       const res = await wx.cloud.callFunction({
         name: 'manageFoodItem',
         data: {
           action: 'update',
           itemId: _id,
-          updates: { quantity: previewQuantity }
+          updates
         }
       })
-      const result = res.result as { success: boolean; errMsg: string }
+      const result = res.result as { success: boolean; errMsg: string; statusChanged?: boolean; newStatus?: string }
       
       if (!result.success) {
         throw new Error(result.errMsg)
       }
 
-      // 更新页面数据
-      const updatedData = { ...this.data, quantity: previewQuantity, _id }
+      // 更新页面数据：确保本地状态与云端一致
+      const updatedData: Record<string, any> = { ...this.data, quantity: updates.quantity, _id }
+      
+      // 库存归零时同步更新本地 status 为 consumed
+      if (willBeConsumed) {
+        updatedData.status = 'consumed'
+      }
+      // 库存从0恢复时，清除 consumed 状态
+      else if (willBeRestored) {
+        delete updatedData.status // 让 _renderItem 根据过期日期重新计算
+      }
+
       this._renderItem(updatedData)
       
       this.setData({
         showStockModal: false,
       })
 
-      wx.showToast({ title: '库存已更新', icon: 'success' })
+      // 根据状态变更给出更友好的提示
+      if (willBeConsumed) {
+        wx.showToast({ title: '已消耗', icon: 'success' })
+      } else {
+        wx.showToast({ title: '库存已更新', icon: 'success' })
+      }
     } catch (e: any) {
       console.error('调整库存失败:', e)
       wx.showToast({ title: e.message || '操作失败', icon: 'none' })

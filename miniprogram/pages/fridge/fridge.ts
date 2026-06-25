@@ -305,6 +305,62 @@ Page({
     }, () => this.applyFiltersAndSort())
   },
 
+  /** 长按食材 — 标记为已消耗 */
+  async onConsumeItem(e: WechatMiniprogram.TouchEvent) {
+    const itemId = e.currentTarget.dataset.id
+    const { name, quantity, unit, status } = e.detail || {}
+
+    if (!itemId) return
+
+    // 演示数据不支持操作
+    if (itemId.startsWith('demo_')) {
+      wx.showToast({ title: '演示数据无法操作', icon: 'none' })
+      return
+    }
+
+    // 已消耗的不再重复操作
+    if (status === 'consumed') {
+      wx.showToast({ title: '该食材已消耗', icon: 'none' })
+      return
+    }
+
+    wx.showModal({
+      title: '确认消耗',
+      content: `确定已将「${name || '该食材'}」用完了吗？\n当前库存：${quantity || 0} ${unit || '个'}`,
+      confirmText: '已消耗',
+      confirmColor: '#FF6B6B',
+      success: async (res) => {
+        if (!res.confirm) return
+
+        wx.showLoading({ title: '处理中...' })
+        try {
+          const callRes = await wx.cloud.callFunction({
+            name: 'manageFoodItem',
+            data: { action: 'consume', itemId }
+          })
+          const result = callRes.result as { success: boolean; errMsg: string }
+          if (!result.success) {
+            throw new Error(result.errMsg)
+          }
+
+          // 从本地数据中移除已消耗的食材
+          const allItems = this.data.allItems.filter(item => item._id !== itemId)
+          this.setData({ allItems }, () => {
+            this._updateCategoryCounts(allItems)
+            this.applyFiltersAndSort()
+          })
+
+          wx.showToast({ title: '已标记消耗', icon: 'success' })
+        } catch (e: any) {
+          console.error('消耗食材失败:', e)
+          wx.showToast({ title: e.message || '操作失败', icon: 'none' })
+        } finally {
+          wx.hideLoading()
+        }
+      },
+    })
+  },
+
   /** 跳转详情页 */
   goDetail(e: WechatMiniprogram.TouchEvent) {
     const id = e.currentTarget.dataset.id

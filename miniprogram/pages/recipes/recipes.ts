@@ -41,7 +41,12 @@ Page({
     page: 1,
     pageSize: 10,
 
-    // currentSource: 'database',
+    // 删除气泡状态
+    bubbleVisible: false,
+    bubbleTargetId: '',
+    bubbleTargetName: '',
+    bubbleTargetIndex: -1,
+    deleting: false,
   },
 
   // 标记从详情页带入的搜索关键词
@@ -83,6 +88,11 @@ Page({
     } else {
       this.loadRecipes()
     }
+  },
+
+  onHide() {
+    this._clearBubbleTimer()
+    this.onHideBubble()
   },
 
   onPullDownRefresh() {
@@ -191,5 +201,103 @@ Page({
 
   goAddRecipe() {
     wx.navigateTo({ url: '/pages/add-recipe/add-recipe' })
+  },
+
+  /* === 长按删除 === */
+
+  /** 长按菜谱卡片 — 弹出删除气泡 */
+  onRecipeLongPress(e: WechatMiniprogram.TouchEvent) {
+    const id = e.currentTarget.dataset.id as string
+    const index = e.currentTarget.dataset.index as number
+    const name = this.data.recipes[index]?.name || ''
+
+    if (!id) return
+
+    this._clearBubbleTimer()
+    this.setData({
+      bubbleVisible: true,
+      bubbleTargetId: id,
+      bubbleTargetName: name,
+      bubbleTargetIndex: index,
+    })
+
+    // 3秒后自动隐藏气泡
+    this._bubbleTimer = setTimeout(() => {
+      this.onHideBubble()
+    }, 3000) as any
+  },
+
+  /** 隐藏删除气泡 */
+  onHideBubble() {
+    this._clearBubbleTimer()
+    if (this.data.bubbleVisible) {
+      this.setData({
+        bubbleVisible: false,
+        bubbleTargetId: '',
+        bubbleTargetName: '',
+        bubbleTargetIndex: -1,
+      })
+    }
+  },
+
+  /** 点击气泡中的"删除" — 弹出二次确认 */
+  onTapDeleteBubble() {
+    const { bubbleTargetName, bubbleTargetId } = this.data
+    this.onHideBubble()
+
+    wx.showModal({
+      title: '确认删除',
+      content: `确定要删除「${bubbleTargetName}」这道菜谱吗？删除后无法恢复。`,
+      confirmText: '删除',
+      confirmColor: '#FF4444',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          this.performDelete(bubbleTargetId)
+        }
+      },
+    })
+  },
+
+  /** 执行删除操作 */
+  async performDelete(recipeId: string) {
+    if (this.data.deleting) return
+
+    this.setData({ deleting: true })
+    wx.showLoading({ title: '删除中...', mask: true })
+
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'deleteRecipe',
+        data: { recipeId },
+      })
+
+      wx.hideLoading()
+
+      const result = res.result as { success: boolean; message?: string; error?: string }
+
+      if (result?.success) {
+        // 从列表中移除已删除的菜谱
+        const newRecipes = this.data.recipes.filter((r) => r._id !== recipeId)
+        this.setData({ recipes: newRecipes })
+        wx.showToast({ title: '已删除', icon: 'success' })
+      } else {
+        wx.showToast({ title: result?.error || '删除失败', icon: 'none' })
+      }
+    } catch (err: any) {
+      wx.hideLoading()
+      console.error('删除菜谱失败:', err)
+      wx.showToast({ title: err.message || '删除失败', icon: 'none' })
+    } finally {
+      this.setData({ deleting: false })
+    }
+  },
+
+  /** 清除气泡定时器 */
+  _clearBubbleTimer() {
+    if (this._bubbleTimer) {
+      clearTimeout(this._bubbleTimer)
+      this._bubbleTimer = null
+    }
   },
 })

@@ -1,5 +1,5 @@
 <!-- components/recipe-card/recipe-card.wxml -->
-<view class="recipe-card" bindtap="onTap">
+<view class="recipe-card" bindtap="onTap" bindlongpress="onLongPress">
   <!-- 封面图区域 -->
   <view class="recipe-card__cover">
     <!-- 有图片且未加载失败时显示图片 -->

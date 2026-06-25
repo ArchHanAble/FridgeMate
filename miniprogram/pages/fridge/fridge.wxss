@@ -6,6 +6,9 @@
 
 /* === 搜索栏 === */
 .search-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
   padding: 16rpx 24rpx;
   position: sticky;
   top: 0;
@@ -14,6 +17,7 @@
 }
 
 .search-input {
+  flex: 1;
   display: flex;
   align-items: center;
   height: 76rpx;
@@ -21,6 +25,25 @@
   background: #FFFFFF;
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-sm);
+}
+
+.add-btn {
+  width: 76rpx;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-gradient);
+  border-radius: 50%;
+  box-shadow: 0 4rpx 16rpx rgba(255, 106, 136, 0.35);
+  flex-shrink: 0;
+}
+
+.add-btn-icon {
+  font-size: 40rpx;
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+  line-height: 1;
 }
 
 .search-icon {

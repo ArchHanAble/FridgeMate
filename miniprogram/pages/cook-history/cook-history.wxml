@@ -64,11 +64,11 @@
         <!-- 时间轴线 -->
         <view class="timeline-dot-wrapper">
           <view class="timeline-dot"></view>
-          <view class="timeline-line" wx:if="{{index < filteredRecords.length - 1}}"></view>
+          <view class="timeline-line" wx:if="{{index < filteredRecords.length - 1 || hasMore}}"></view>
         </view>
 
         <!-- 内容卡片 -->
-        <view class="timeline-card">
+        <view class="timeline-card" bindlongpress="onLongPressRecord" data-id="{{item._id}}">
           <!-- 上部分：图片 + 信息（左右布局） -->
           <view class="timeline-card-top">
             <!-- 左侧：菜品图片 -->
@@ -126,9 +126,71 @@
               <text class="experience-toggle-icon">{{item.experienceExpanded ? '▲' : '▼'}}</text>
             </view>
           </view>
+
+          <!-- 评论区域 -->
+          <view class="comment-section">
+            <!-- 已有评论列表 -->
+            <view class="comment-list" wx:if="{{commentMap[item._id] && commentMap[item._id].length > 0}}">
+              <view class="comment-item" wx:for="{{commentMap[item._id]}}" wx:for-item="comment" wx:key="_id">
+                <image
+                  class="comment-avatar"
+                  src="{{comment.avatarUrl || '/images/default-avatar.png'}}"
+                  mode="aspectFill"
+                />
+                <view class="comment-body">
+                  <view class="comment-header">
+                    <text class="comment-nickname">{{comment.nickName || '未设置昵称'}}</text>
+                    <text class="comment-time">{{comment.timeText}}</text>
+                  </view>
+                  <text class="comment-content">{{comment.content}}</text>
+                </view>
+              </view>
+            </view>
+
+            <!-- 评论输入区 -->
+            <view class="comment-input-wrapper">
+              <input
+                class="comment-input"
+                placeholder="写评论..."
+                placeholder-class="comment-placeholder"
+                value="{{item._commentInput}}"
+                bindinput="onCommentInput"
+                data-id="{{item._id}}"
+                confirm-type="send"
+                bindconfirm="submitComment"
+              />
+              <view
+                class="comment-send-btn {{item._commentInput ? 'comment-send-btn--active' : ''}}"
+                catchtap="submitComment"
+                data-id="{{item._id}}"
+              >
+                <text wx:if="{{!item._commentSubmitting}}">发送</text>
+                <text wx:else class="comment-sending">...</text>
+              </view>
+            </view>
+          </view>
+
         </view>
       </view>
     </block>
+
+    <!-- 加载更多 -->
+    <view class="load-more-section">
+      <!-- 加载中 -->
+      <view class="load-more-loading" wx:if="{{loadingMore}}">
+        <view class="loading-spinner-sm"></view>
+        <text>加载中...</text>
+      </view>
+      <!-- 可加载更多 -->
+      <view class="load-more-btn" wx:elif="{{hasMore}}" bindtap="loadMore">
+        <text>加载更多</text>
+        <text class="load-more-hint">（{{total - filteredRecords.length}} 条剩余）</text>
+      </view>
+      <!-- 已全部加载 -->
+      <view class="no-more" wx:elif="{{filteredRecords.length > 0}}">
+        <text>— 已加载全部 {{total}} 条记录 —</text>
+      </view>
+    </view>
   </view>
 
   <!-- ====== 空状态 ====== -->
@@ -263,6 +325,20 @@
           <text>暂无菜谱，去添加吧</text>
         </view>
       </scroll-view>
+    </view>
+  </view>
+
+  <!-- ====== 删除气泡（放在 page-container 外，避免 fixed 定位导致滚动位置异常） ====== -->
+  <view class="delete-bubble-wrapper" wx:if="{{deleteBubbleId}}" catchtap="hideDeleteBubble">
+    <view class="delete-bubble">
+      <view class="delete-bubble__tip">
+        <text>长按了「{{deleteBubbleName}}」</text>
+      </view>
+      <view class="delete-bubble__action" catchtap="onTapDeleteBubble">
+        <text class="delete-bubble__icon">🗑</text>
+        <text>删除记录</text>
+      </view>
+      <view class="delete-bubble__arrow"></view>
     </view>
   </view>
 

@@ -105,7 +105,8 @@ exports.main = async (event, context) => {
         const allowedFields = [
           'name', 'brand', 'category', 'location',
           'quantity', 'unit', 'productionDate',
-          'expiryDate', 'shelfLifeDays', 'note'
+          'expiryDate', 'shelfLifeDays', 'note',
+          'status'
         ]
 
         // 构建安全的更新数据
@@ -117,14 +118,30 @@ exports.main = async (event, context) => {
           }
         }
 
-        // === 自动计算保质期状态 ===
-        // 当生产日期或保质期发生变化时，重新计算状态
-        const needRecalcStatus = updates.hasOwnProperty('productionDate') || 
-                                updates.hasOwnProperty('expiryDate') || 
-                                updates.hasOwnProperty('shelfLifeDays')
-        
+        // === 自动更新状态 ===
         let oldStatus = item.status || 'fresh'
         let newStatus = oldStatus
+        let statusChanged = false
+
+        // 库存归零 → 自动标记为"已消耗"
+        if (updates.hasOwnProperty('quantity')) {
+          const finalQty = updates.quantity
+          if (finalQty <= 0 && oldStatus !== 'consumed') {
+            updateData.status = 'consumed'
+            updateData.quantity = 0 // 确保库存精确归零
+            newStatus = 'consumed'
+            statusChanged = true
+          }
+          // 库存从0恢复为正数 → 根据保质期重新计算状态
+          else if (finalQty > 0 && oldStatus === 'consumed') {
+            statusChanged = true
+          }
+        }
+
+        // 当生产日期或保质期发生变化时，重新计算状态
+        const needRecalcStatus =statusChanged || updates.hasOwnProperty('productionDate') || 
+                                updates.hasOwnProperty('expiryDate') || 
+                                updates.hasOwnProperty('shelfLifeDays')
         
         if (needRecalcStatus) {
           // 获取最新的过期日期
@@ -169,11 +186,11 @@ exports.main = async (event, context) => {
             
             // 只有当原状态不是 'consumed' 时才更新状态
             // （已消耗的食材保持 consumed 状态）
-            if (oldStatus !== 'consumed') {
-              updateData.status = newStatus
-            } else {
-              newStatus = oldStatus // 保持原状态
-            }
+            // if (oldStatus !== 'consumed') {
+            //   updateData.status = newStatus
+            // } else {
+            //   newStatus = oldStatus // 保持原状态
+            // }
           }
         }
 
@@ -181,7 +198,7 @@ exports.main = async (event, context) => {
         console.log(`✅ [manageFoodItem] 更新成功: ${itemId}, status: ${oldStatus} → ${newStatus}`)
         
         // 返回状态变更信息给前端
-        const statusChanged = oldStatus !== newStatus
+        statusChanged = statusChanged || (oldStatus !== newStatus)
         return { 
           success: true, 
           message: '更新成功', 

@@ -17,6 +17,9 @@
         <text>✕</text>
       </view>
     </view>
+    <view class="add-btn" bindtap="goAddFood">
+      <text class="add-btn-icon">+</text>
+    </view>
   </view>
 
   <!-- === 分类标签栏 === -->
@@ -68,6 +71,7 @@
       show-arrow="{{true}}"
       data-id="{{item._id}}"
       bind:tap="goDetail"
+      bind:consumetap="onConsumeItem"
     />
   </view>
 

@@ -13,7 +13,7 @@ const _ = db.command
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const openid = wxContext.OPENID
-  const { recipeId, customIngredients, image, experience } = event
+  const { recipeId, customIngredients, image, experience, cookedAt } = event
 
   if (!recipeId) {
     return { success: false, errMsg: '菜谱ID不能为空' }
@@ -91,7 +91,7 @@ exports.main = async (event, context) => {
         notFound.push({
           name: ing.name,
           amount: ing.amount,
-          unit: matchedFood.unit
+          unit: ing.unit || ''
         })
         console.log(`  ✗ 冰箱中没有找到: ${ing.name}`)
       }
@@ -99,6 +99,20 @@ exports.main = async (event, context) => {
 
     // === Step 4: 记录做菜历史 ===
     try {
+      // 解析做菜日期（与 recordCook 保持一致的逻辑，使用客户端传入的本地日期）
+      let cookDate = new Date()
+      if (cookedAt && typeof cookedAt === 'string') {
+        const now = new Date()
+        const hours = String(now.getHours()).padStart(2, '0')
+        const minutes = String(now.getMinutes()).padStart(2, '0')
+        const seconds = String(now.getSeconds()).padStart(2, '0')
+        const timeStr = `${hours}:${minutes}:${seconds}`
+        const parsed = new Date(cookedAt + 'T' + timeStr)
+        if (!isNaN(parsed.getTime())) {
+          cookDate = parsed
+        }
+      }
+
       await db.collection('cooking_history').add({
         data: {
           _openid: openid,
@@ -109,7 +123,7 @@ exports.main = async (event, context) => {
           consumedIngredients: consumed.map(c => ({ name: c.name, amount: c.amount, unit: '' })),
           missingInFridge: notFound.map(nf => ({ name: nf.name, amount: nf.amount, unit: '' })),
           source: 'consume',           // 标记来源：清耗食材
-          cookedAt: new Date(),
+          cookedAt: cookDate,           // 做菜日期（使用客户端传入的本地日期）
           createdAt: new Date(),
         }
       })

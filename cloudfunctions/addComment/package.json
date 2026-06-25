@@ -1,0 +1,1 @@
+{"name": "addComment", "version": "1.0.0", "description": "为做菜历史记录添加评论", "main": "index.js", "dependencies": {"wx-server-sdk": "~2.6.3"}}

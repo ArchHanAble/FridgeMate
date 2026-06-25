@@ -152,3 +152,82 @@
   font-size: var(--font-size-sm);
   color: var(--color-text-hint);
 }
+
+/* === 删除气泡 === */
+.delete-bubble-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.delete-bubble {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28rpx 48rpx;
+  background: linear-gradient(135deg, #FFFFFF, #FFF5F5);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 12rpx 40rpx rgba(255, 68, 68, 0.2);
+  animation: delete-bubble-in 0.25s var(--ease-out);
+  gap: 20rpx;
+}
+
+.delete-bubble__tip {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-hint);
+}
+
+.delete-bubble__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 16rpx 48rpx;
+  background: linear-gradient(135deg, #FF6B6B, #FF4444);
+  border-radius: var(--radius-full);
+  box-shadow: 0 6rpx 20rpx rgba(255, 107, 107, 0.4);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: #FFFFFF;
+  white-space: nowrap;
+}
+
+.delete-bubble__action:active {
+  transform: scale(0.95);
+  opacity: 0.9;
+}
+
+.delete-bubble__icon {
+  font-size: 32rpx;
+}
+
+.delete-bubble__arrow {
+  position: absolute;
+  top: -16rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 16rpx solid transparent;
+  border-right: 16rpx solid transparent;
+  border-bottom: 16rpx solid rgba(255, 255, 255, 0.95);
+}
+
+@keyframes delete-bubble-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(20rpx);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
